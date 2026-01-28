@@ -3,7 +3,7 @@
 
 #include "Arduino.h"
 
-//项目板子
+//Project board
 #define SCK 12
 #define MOSI 11
 #define RES 10

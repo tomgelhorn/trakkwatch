@@ -5,13 +5,13 @@ PAINT Paint;
 
 
 /*******************************************************************
-    函数说明：创建图片缓存数组
-    接口说明：*image  要传入的图片数组
-               Width  图片宽度
-               Heighe 图片长度
-               Rotate 屏幕显示方向
-               Color  显示颜色
-    返回值：  无
+    Function description: Create image buffer array
+    Interface description: *image  Image array to be passed in
+                          Width   Image width
+                          Height  Image height
+                          Rotate  Screen display direction
+                          Color   Display color
+    Return value: None
 *******************************************************************/
 void Paint_NewImage(uint8_t *image, uint16_t Width, uint16_t Height, uint16_t Rotate, uint16_t Color)
 {
@@ -36,9 +36,9 @@ void Paint_NewImage(uint8_t *image, uint16_t Width, uint16_t Height, uint16_t Ro
 }
 
 /*******************************************************************
-    函数说明：清空缓冲区
-    接口说明：Color  像素点颜色参数
-    返回值：  无
+    Function description: Clear buffer
+    Interface description: Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void Paint_Clear(uint8_t Color)
 {
@@ -56,11 +56,11 @@ void Paint_Clear(uint8_t Color)
 
 
 /*******************************************************************
-    函数说明：点亮一个像素点
-    接口说明：Xpoint 像素点x坐标参数
-              Ypoint 像素点Y坐标参数
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Set a pixel
+    Interface description: Xpoint Pixel x coordinate parameter
+                          Ypoint Pixel y coordinate parameter
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void Paint_SetPixel(uint16_t Xpoint, uint16_t Ypoint, uint16_t Color)
 {
@@ -93,23 +93,23 @@ void Paint_SetPixel(uint16_t Xpoint, uint16_t Ypoint, uint16_t Color)
   Rdata = Paint.Image[Addr];
   if (Color == BLACK)
   {
-    Paint.Image[Addr] = Rdata & ~(0x80 >> (X % 8)); //将对应数据位置0
+    Paint.Image[Addr] = Rdata & ~(0x80 >> (X % 8)); //Set corresponding data bit to 0
   }
   else
   {
-    Paint.Image[Addr] = Rdata | (0x80 >> (X % 8)); //将对应数据位置1
+    Paint.Image[Addr] = Rdata | (0x80 >> (X % 8)); //Set corresponding data bit to 1
   }
 }
 
 
 /*******************************************************************
-    函数说明：划线函数
-    接口说明：Xstart 像素x起始坐标参数
-              Ystart 像素Y起始坐标参数
-              Xend   像素x结束坐标参数
-              Yend   像素Y结束坐标参数
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Draw line function
+    Interface description: Xstart Pixel x start coordinate parameter
+                          Ystart Pixel y start coordinate parameter
+                          Xend   Pixel x end coordinate parameter
+                          Yend   Pixel y end coordinate parameter
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void EPD_DrawLine(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend, uint16_t Color)
 {
@@ -144,14 +144,14 @@ void EPD_DrawLine(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend
   }
 }
 /*******************************************************************
-    函数说明：画矩形函数
-    接口说明：Xstart 矩形x起始坐标参数
-              Ystart 矩形Y起始坐标参数
-              Xend   矩形x结束坐标参数
-              Yend   矩形Y结束坐标参数
-              Color  像素点颜色参数
-              mode   矩形是否进行填充
-    返回值：  无
+    Function description: Draw rectangle function
+    Interface description: Xstart Rectangle x start coordinate parameter
+                          Ystart Rectangle y start coordinate parameter
+                          Xend   Rectangle x end coordinate parameter
+                          Yend   Rectangle y end coordinate parameter
+                          Color  Pixel color parameter
+                          mode   Whether the rectangle is filled
+    Return value: None
 *******************************************************************/
 void EPD_DrawRectangle(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend, uint16_t Color, uint8_t mode)
 {
@@ -172,13 +172,13 @@ void EPD_DrawRectangle(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t
   }
 }
 /*******************************************************************
-    函数说明：画圆函数
-    接口说明：X_Center 圆心x起始坐标参数
-              Y_Center 圆心Y坐标参数
-              Radius   圆形半径参数
-              Color  像素点颜色参数
-              mode   圆形是否填充显示
-    返回值：  无
+    Function description: Draw circle function
+    Interface description: X_Center Circle center x coordinate parameter
+                          Y_Center Circle center y coordinate parameter
+                          Radius   Circle radius parameter
+                          Color    Pixel color parameter
+                          mode     Whether the circle is filled
+    Return value: None
 *******************************************************************/
 void EPD_DrawCircle(uint16_t X_Center, uint16_t Y_Center, uint16_t Radius, uint16_t Color, uint8_t mode)
 {
@@ -229,13 +229,13 @@ void EPD_DrawCircle(uint16_t X_Center, uint16_t Y_Center, uint16_t Radius, uint1
 }
 
 /*******************************************************************
-    函数说明：显示单个字符
-    接口说明：x      字符x坐标参数
-              y      字符Y坐标参数
-              chr    要显示的字符
-              size1  显示字符字号大小
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Display a single character
+    Interface description: x      Character x coordinate parameter
+                          y      Character y coordinate parameter
+                          chr    Character to display
+                          size1  Display character font size
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void EPD_ShowChar(uint16_t x, uint16_t y, uint16_t chr, uint16_t size1, uint16_t color)
 {
@@ -243,29 +243,29 @@ void EPD_ShowChar(uint16_t x, uint16_t y, uint16_t chr, uint16_t size1, uint16_t
   uint16_t x0, y0;
   x0 = x, y0 = y;
   if (size1 == 8)size2 = 6;
-  else size2 = (size1 / 8 + ((size1 % 8) ? 1 : 0)) * (size1 / 2); //得到字体一个字符对应点阵集所占的字节数
-  chr1 = chr - ' '; //计算偏移后的值
+  else size2 = (size1 / 8 + ((size1 % 8) ? 1 : 0)) * (size1 / 2); //Get the number of bytes occupied by the dot matrix set corresponding to one character of the font
+  chr1 = chr - ' '; //Calculate the offset value
   for (i = 0; i < size2; i++)
   {
     if (size1 == 8)
     {
-      temp = asc2_0806[chr1][i]; //调用0806字体
+      temp = asc2_0806[chr1][i]; //Call 0806 font
     }
     else if (size1 == 12)
     {
-      temp = asc2_1206[chr1][i]; //调用1206字体
+      temp = asc2_1206[chr1][i]; //Call 1206 font
     }
     else if (size1 == 16)
     {
-      temp = asc2_1608[chr1][i]; //调用1608字体
+      temp = asc2_1608[chr1][i]; //Call 1608 font
     }
     else if (size1 == 24)
     {
-      temp = asc2_2412[chr1][i]; //调用2412字体
+      temp = asc2_2412[chr1][i]; //Call 2412 font
     }
     else if (size1 == 48)
     {
-      temp = asc2_4824[chr1][i]; //调用2412字体
+      temp = asc2_4824[chr1][i]; //Call 2412 font
     }
     else return;
     for (m = 0; m < 8; m++)
@@ -286,17 +286,17 @@ void EPD_ShowChar(uint16_t x, uint16_t y, uint16_t chr, uint16_t size1, uint16_t
 }
 
 /*******************************************************************
-    函数说明：显示字符串
-    接口说明：x      字符串x坐标参数
-              y      字符串Y坐标参数
-               chr    要显示的字符串
-              size1  显示字符串字号大小
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Display string
+    Interface description: x      String x coordinate parameter
+                          y      String y coordinate parameter
+                          chr    String to display
+                          size1  Display string font size
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void EPD_ShowString(uint16_t x, uint16_t y, const char *chr, uint16_t size1, uint16_t color)
 {
-  while (*chr != '\0') //判断是不是非法字符!
+  while (*chr != '\0') //Check if it is an illegal character!
   {
     EPD_ShowChar(x, y, *chr, size1, color);
     chr++;
@@ -304,10 +304,10 @@ void EPD_ShowString(uint16_t x, uint16_t y, const char *chr, uint16_t size1, uin
   }
 }
 /*******************************************************************
-    函数说明：指数运算
-    接口说明：m 底数
-              n 指数
-    返回值：  m的n次方
+    Function description: Exponentiation
+    Interface description: m Base
+                          n Exponent
+    Return value: m to the power of n
 *******************************************************************/
 uint32_t EPD_Pow(uint16_t m, uint16_t n)
 {
@@ -319,14 +319,14 @@ uint32_t EPD_Pow(uint16_t m, uint16_t n)
   return result;
 }
 /*******************************************************************
-    函数说明：显示整型数字
-    接口说明：x      数字x坐标参数
-              y      数字Y坐标参数
-              num    要显示的数字
-              len    数字的位数
-              size1  显示字符串字号大小
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Display integer number
+    Interface description: x      Number x coordinate parameter
+                          y      Number y coordinate parameter
+                          num    Number to display
+                          len    Number of digits
+                          size1  Display string font size
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 void EPD_ShowNum(uint16_t x, uint16_t y, uint32_t num, uint16_t len, uint16_t size1, uint16_t color)
 {
@@ -346,15 +346,15 @@ void EPD_ShowNum(uint16_t x, uint16_t y, uint32_t num, uint16_t len, uint16_t si
   }
 }
 /*******************************************************************
-    函数说明：显示浮点型数字
-    接口说明：x      数字x坐标参数
-              y      数字Y坐标参数
-              num    要显示的浮点数
-              len    数字的位数
-              pre    浮点数的精度
-              size1  显示字符串字号大小
-              Color  像素点颜色参数
-    返回值：  无
+    Function description: Display floating point number
+    Interface description: x      Number x coordinate parameter
+                          y      Number y coordinate parameter
+                          num    Floating point number to display
+                          len    Number of digits
+                          pre    Floating point precision
+                          size1  Display string font size
+                          Color  Pixel color parameter
+    Return value: None
 *******************************************************************/
 
 void EPD_ShowFloatNum1(uint16_t x, uint16_t y, float num, uint8_t len, uint8_t pre, uint8_t sizey, uint8_t color)
@@ -380,7 +380,7 @@ void EPD_ShowFloatNum1(uint16_t x, uint16_t y, float num, uint8_t len, uint8_t p
 
 
 
-//GUI显示秒表
+//GUI display stopwatch
 void EPD_ShowWatch(uint16_t x, uint16_t y, float num, uint8_t len, uint8_t pre, uint8_t sizey, uint8_t color)
 {
   uint8_t t, temp, sizex;

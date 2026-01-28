@@ -11,9 +11,9 @@ void EPD_GPIOInit(void)
 }
 
 /**
- * @brief       IO模拟SPI发送一个字节数据
- * @param       dat: 需要发送的字节数据
- * @retval      无
+ * @brief       IO simulated SPI sends one byte of data
+ * @param       dat: Byte data to be sent
+ * @retval      None
  */
 void EPD_WR_Bus(uint8_t dat)
 {
@@ -37,9 +37,9 @@ void EPD_WR_Bus(uint8_t dat)
 }
 
 /**
- * @brief       向液晶写寄存器命令
- * @param       reg: 要写的命令
- * @retval      无
+ * @brief       Write register command to LCD
+ * @param       reg: Command to be written
+ * @retval      None
  */
 void EPD_WR_REG(uint8_t reg)
 {
@@ -49,9 +49,9 @@ void EPD_WR_REG(uint8_t reg)
 }
 
 /**
- * @brief       向液晶写一个字节数据
- * @param       dat: 要写的数据
- * @retval      无
+ * @brief       Write one byte of data to LCD
+ * @param       dat: Data to be written
+ * @retval      None
  */
 void EPD_WR_DATA8(uint8_t dat)
 {

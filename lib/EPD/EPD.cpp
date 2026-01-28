@@ -3,9 +3,9 @@
 
 
 /*******************************************************************
-    函数说明:判忙函数
-    入口参数:无
-    说明:忙状态为1
+    Function description: Check busy function
+    Input parameters: None
+    Description: Busy state is 1
 *******************************************************************/
 void EPD_READBUSY(void)
 {
@@ -19,9 +19,9 @@ void EPD_READBUSY(void)
 }
 
 /*******************************************************************
-    函数说明:硬件复位函数
-    入口参数:无
-    说明:在E-Paper进入Deepsleep状态后需要硬件复位
+    Function description: Hardware reset function
+    Input parameters: None
+    Description: Hardware reset is required after E-Paper enters Deepsleep state
 *******************************************************************/
 void EPD_HW_RESET(void)
 {
@@ -34,9 +34,9 @@ void EPD_HW_RESET(void)
 }
 
 /*******************************************************************
-    函数说明:更新函数
-    入口参数:无
-    说明:更新显示内容到E-Paper
+    Function description: Update function
+    Input parameters: None
+    Description: Update display content to E-Paper
 *******************************************************************/
 void EPD_Update(void)
 {
@@ -46,9 +46,9 @@ void EPD_Update(void)
   EPD_READBUSY();
 }
 /*******************************************************************
-    函数说明:局刷更新函数
-    入口参数:无
-    说明:E-Paper工作在局刷模式
+    Function description: Partial refresh update function
+    Input parameters: None
+    Description: E-Paper works in partial refresh mode
 *******************************************************************/
 void EPD_PartUpdate(void)
 {
@@ -58,9 +58,9 @@ void EPD_PartUpdate(void)
   EPD_READBUSY();
 }
 /*******************************************************************
-    函数说明:快刷更新函数
-    入口参数:无
-    说明:E-Paper工作在快刷模式
+    Function description: Fast refresh update function
+    Input parameters: None
+    Description: E-Paper works in fast refresh mode
 *******************************************************************/
 void EPD_FastUpdate(void)
 {
@@ -71,9 +71,9 @@ void EPD_FastUpdate(void)
 }
 
 /*******************************************************************
-    函数说明:休眠函数
-    入口参数:无
-    说明:屏幕进入低功耗模式
+    Function description: Sleep function
+    Input parameters: None
+    Description: Screen enters low power mode
 *******************************************************************/
 void EPD_DeepSleep(void)
 {
@@ -86,9 +86,9 @@ void EPD_DeepSleep(void)
 }
 
 /*******************************************************************
-    函数说明:初始化函数
-    入口参数:无
-    说明:调整E-Paper默认显示方向
+    Function description: Initialization function
+    Input parameters: None
+    Description: Adjust E-Paper default display direction
 *******************************************************************/
 void EPD_Init(void)
 {
@@ -101,9 +101,9 @@ void EPD_Init(void)
 }
 
 /*******************************************************************
-    函数说明:快刷初始化函数
-    入口参数:无
-    说明:E-Paper工作在快刷模式1
+    Function description: Fast refresh initialization function
+    Input parameters: None
+    Description: E-Paper works in fast refresh mode 1
 *******************************************************************/
 void EPD_FastMode1Init(void)
 {
@@ -128,9 +128,9 @@ void EPD_FastMode1Init(void)
 
 }
 /*******************************************************************
-    函数说明:快刷初始化函数
-    入口参数:无
-    说明:E-Paper工作在快刷模式2
+    Function description: Fast refresh initialization function
+    Input parameters: None
+    Description: E-Paper works in fast refresh mode 2
 *******************************************************************/
 void EPD_FastMode2Init(void)
 {
@@ -154,9 +154,9 @@ void EPD_FastMode2Init(void)
 }
 
 /*******************************************************************
-    函数说明:清屏函数
-    入口参数:无
-    说明:E-Paper刷白屏
+    Function description: Clear screen function
+    Input parameters: None
+    Description: E-Paper refresh to white screen
 *******************************************************************/
 void EPD_Display_Clear(void)
 {
@@ -177,9 +177,9 @@ void EPD_Display_Clear(void)
 }
 
 /*******************************************************************
-    函数说明:局刷擦除旧数据
-    入口参数:无
-    说明:E-Paper工作在局刷模式下调用
+    Function description: Partial refresh erase old data
+    Input parameters: None
+    Description: Called when E-Paper works in partial refresh mode
 *******************************************************************/
 void EPD_Clear_R26H(void)
 {
@@ -193,9 +193,9 @@ void EPD_Clear_R26H(void)
 }
 
 /*******************************************************************
-    函数说明:数组数据更新到E-Paper
-    入口参数:无
-    说明:
+    Function description: Update array data to E-Paper
+    Input parameters: None
+    Description:
 *******************************************************************/
 void EPD_Display(uint8_t *image)
 {
