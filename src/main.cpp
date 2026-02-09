@@ -39,7 +39,7 @@ void setup() {
 
     delay(5000);             // Wait for 5000 milliseconds (5 seconds)
 
-    clear_all();            // Call the clear_all function to clear the screen content
+    //clear_all();            // Call the clear_all function to clear the screen content
 }
     // Main loop function, currently no operations are being executed in this function
     // Code that needs to be executed repeatedly can be added here
