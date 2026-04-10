@@ -14,8 +14,7 @@
 
 // Wake reasons
 #define WAKE_TIMER 0
-#define WAKE_TAP 1
-#define WAKE_BOOT 2
+#define WAKE_BOOT 1
 
 // RTC memory survives deep sleep
 RTC_DATA_ATTR uint8_t currentScreen = SCREEN_DASHBOARD;
@@ -36,12 +35,6 @@ void updateWakeReason() {
             Serial.println("Wake: Timer (scheduled measurement)");
             break;
             
-        case ESP_SLEEP_WAKEUP_EXT0:
-        case ESP_SLEEP_WAKEUP_GPIO:
-            wakeReason = WAKE_TAP;
-            Serial.println("Wake: GPIO interrupt (double tap detected)");
-            break;
-            
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
             wakeReason = WAKE_BOOT;
@@ -52,11 +45,6 @@ void updateWakeReason() {
             }
             break;
     }
-}
-
-// Returns true when the wake reason should start an interactive session
-bool isInteractiveWake() {
-    return wakeReason == WAKE_BOOT || wakeReason == WAKE_TAP;
 }
 
 // Cycle through screens: Dashboard -> Graph -> Sleep Summary -> Dashboard
@@ -81,8 +69,7 @@ void printSystemState() {
     Serial.printf("Current screen: %s\n",
         currentScreen < 3 ? screenNames[currentScreen] : "UNKNOWN");
     Serial.printf("Wake reason: %s\n",
-        wakeReason == WAKE_TIMER ? "TIMER" :
-        wakeReason == WAKE_TAP  ? "TAP"  : "BOOT");
+        wakeReason == WAKE_TIMER ? "TIMER" : "BOOT");
     Serial.println("==================\n");
 }
 

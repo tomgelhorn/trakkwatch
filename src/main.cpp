@@ -1,39 +1,190 @@
 /*
  * TrakkWatch - ESP32-C3 Smartwatch Firmware
- * 
- * Features:
- * - Heart rate monitoring with MAX30102 sensor
- * - Battery voltage monitoring
- * - E-paper display (200x200 GDEH0154D67)
- * - 4-hour heart rate history graph
- * - Double-tap gesture navigation (BMA400 IMU)
- * - Deep sleep power management
- * 
- * Screen navigation (cyclic via double-tap):
- *   Dashboard -> Graph -> Sleep Summary -> Dashboard
- * 
- * Wake patterns:
- * - Timer: Every 5 minutes for measurement cycle
- * - GPIO (first boot or double-tap): 60-second interactive session;
- *   each confirmed double tap cycles to the next screen;
- *   device returns to deep sleep after 60 s of no interaction.
+ *
+ * Runtime model:
+ * - Timer-only wake: device wakes on schedule
+ * - Task A: heart-rate measurement (runs independently)
+ * - Task B: IMU interrupt handling + UI rendering
+ * - If interaction continues near session boundary, sleep is delayed
+ *   until 60 seconds after the last confirmed double-tap.
  */
 
 #include <Arduino.h>
-#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "DataStorage.h"
 #include "SystemState.h"
 #include "Sensors.h"
 #include "DisplayManager.h"
 
-// Measurement interval (5 minutes in microseconds)
-#define SLEEP_INTERVAL_US (5ULL * 60ULL * 1000000ULL)
+// Sleep interval (4 minutes) + active window (1 minute) = 5-minute cycle
+#define SLEEP_INTERVAL_US (4ULL * 60ULL * 1000000ULL)
 
-// Measurement duration (10 seconds)
-#define MEASUREMENT_DURATION_MS 60000
+// Active measurement/session baseline duration (1 minute)
+#define MEASUREMENT_DURATION_MS 60000UL
+#define ACTIVE_WINDOW_MS MEASUREMENT_DURATION_MS
 
 // Global data storage
 HRHistoryBuffer hrHistory;
+
+// Task handles
+TaskHandle_t hrTaskHandle = nullptr;
+TaskHandle_t uiTaskHandle = nullptr;
+
+// Shared session state
+SemaphoreHandle_t stateMutex = nullptr;
+SemaphoreHandle_t historyMutex = nullptr;
+
+bool sessionStopRequested = false;
+bool measurementComplete = false;
+bool renderRequested = false;
+uint8_t latestHeartRate = 0;
+float latestBatteryVoltage = 0.0f;
+uint32_t lastTapTimestampMs = 0;
+
+static bool lockState(TickType_t waitTicks = pdMS_TO_TICKS(50)) {
+    if (stateMutex == nullptr) {
+        return false;
+    }
+    return xSemaphoreTake(stateMutex, waitTicks) == pdTRUE;
+}
+
+static bool lockHistory(TickType_t waitTicks = pdMS_TO_TICKS(200)) {
+    if (historyMutex == nullptr) {
+        return false;
+    }
+    return xSemaphoreTake(historyMutex, waitTicks) == pdTRUE;
+}
+
+static void unlockState() {
+    xSemaphoreGive(stateMutex);
+}
+
+static void unlockHistory() {
+    xSemaphoreGive(historyMutex);
+}
+
+static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage) {
+    if (currentScreen == SCREEN_GRAPH) {
+        uint8_t buffer[HR_HISTORY_SIZE] = {0};
+        uint8_t count = 0;
+        if (lockHistory()) {
+            count = hrHistory.getMeasurements(buffer, HR_HISTORY_SIZE);
+            unlockHistory();
+        }
+        renderGraph(buffer, count);
+    } else if (currentScreen == SCREEN_SLEEP_SUMMARY) {
+        renderSleepSummary();
+    } else {
+        bool buildingHistory = true;
+        if (lockHistory()) {
+            buildingHistory = !hrHistory.hasFullHistory();
+            unlockHistory();
+        }
+        renderDashboard(hrValue, batteryVoltage, buildingHistory);
+    }
+}
+
+static void heartRateTask(void* parameter) {
+    (void)parameter;
+
+    uint8_t hr = measureHeartRate(MEASUREMENT_DURATION_MS);
+
+    if (hr > 0) {
+        if (lockHistory(pdMS_TO_TICKS(500))) {
+            hrHistory.addMeasurement(hr);
+            unlockHistory();
+            Serial.printf("Stored HR: %d BPM\n", hr);
+        } else {
+            Serial.println("WARNING: Failed to lock history mutex, HR not stored");
+        }
+    } else {
+        Serial.println("No valid HR measurement");
+    }
+
+    if (lockState()) {
+        latestHeartRate = hr;
+        measurementComplete = true;
+        renderRequested = true;
+        unlockState();
+    }
+
+    while (true) {
+        bool shouldStop = false;
+        if (lockState(pdMS_TO_TICKS(20))) {
+            shouldStop = sessionStopRequested;
+            unlockState();
+        }
+        if (shouldStop) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    hrTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+static void uiTask(void* parameter) {
+    (void)parameter;
+
+    uint8_t hrSnapshot = 0;
+    float batterySnapshot = 0.0f;
+
+    if (lockState()) {
+        renderRequested = false;
+        hrSnapshot = latestHeartRate;
+        batterySnapshot = latestBatteryVoltage;
+        unlockState();
+    }
+    renderCurrentScreen(hrSnapshot, batterySnapshot);
+
+    while (true) {
+        bool shouldStop = false;
+        bool shouldRender = false;
+
+        if (lockState(pdMS_TO_TICKS(20))) {
+            shouldStop = sessionStopRequested;
+            shouldRender = renderRequested;
+            renderRequested = false;
+            hrSnapshot = latestHeartRate;
+            batterySnapshot = latestBatteryVoltage;
+            unlockState();
+        }
+
+        if (shouldStop) {
+            break;
+        }
+
+        uint32_t tapEvents = consumeTapInterrupts();
+        if (tapEvents > 0) {
+            for (uint32_t i = 0; i < tapEvents; i++) {
+                uint32_t now = millis();
+                toggleScreen();
+
+                if (lockState()) {
+                    lastTapTimestampMs = now;
+                    hrSnapshot = latestHeartRate;
+                    batterySnapshot = latestBatteryVoltage;
+                    unlockState();
+                }
+
+                shouldRender = true;
+                Serial.println("Double-tap confirmed: advancing screen");
+            }
+        }
+
+        if (shouldRender) {
+            renderCurrentScreen(hrSnapshot, batterySnapshot);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(30));
+    }
+
+    uiTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
 
 void setup() {
     Serial.begin(115200);
@@ -65,110 +216,123 @@ void setup() {
     if (!initDisplay()) {
         Serial.println("ERROR: Failed to initialize display!");
     }
-    
-    // Handle different wake reasons
-    if (wakeReason == WAKE_BOOT || wakeReason == WAKE_TAP) {
-        // -------------------------------------------------------
-        // Interactive session (first boot OR double-tap wake)
-        // Device stays awake up to INACTIVITY_TIMEOUT_MS (60 s).
-        // Each confirmed double tap cycles to the next screen and
-        // resets the inactivity timer.  When the timer expires the
-        // device proceeds to deep sleep.
-        // -------------------------------------------------------
-        Serial.println("\n>>> Interactive session <<<");
 
-        // On double-tap wake the wake itself counts as one navigation
-        // input: advance the screen, then drain any residual IMU flag.
-        if (wakeReason == WAKE_TAP) {
-            toggleScreen();
-            checkTapInterrupt();  // clear any residual interrupt state
+    // Wake state indicator: partial update only in the badge area.
+    updatePowerStatusBadge(true);
+
+    // Drain any stale interrupt edges before starting this active session.
+    consumeTapInterrupts();
+
+    // Create synchronization primitives
+    stateMutex = xSemaphoreCreateMutex();
+    historyMutex = xSemaphoreCreateMutex();
+    bool mutexReady = (stateMutex != nullptr && historyMutex != nullptr);
+    if (!mutexReady) {
+        Serial.println("ERROR: Failed to create mutexes");
+    }
+
+    // Session state initialization
+    latestBatteryVoltage = readBatteryVoltage();
+    latestHeartRate = 0;
+    measurementComplete = false;
+    renderRequested = true;
+    lastTapTimestampMs = 0;
+    sessionStopRequested = false;
+
+    Serial.println("\n>>> Active session (HR + UI concurrency) <<<");
+
+    BaseType_t uiCreated = pdFAIL;
+    BaseType_t hrCreated = pdFAIL;
+    if (mutexReady) {
+        uiCreated = xTaskCreate(uiTask, "UI", 6144, nullptr, 1, &uiTaskHandle);
+        hrCreated = xTaskCreate(heartRateTask, "HR", 6144, nullptr, 2, &hrTaskHandle);
+    }
+
+    if (!mutexReady || uiCreated != pdPASS || hrCreated != pdPASS) {
+        Serial.println("ERROR: Failed to create tasks, falling back to synchronous mode");
+
+        if (uiTaskHandle != nullptr) {
+            vTaskDelete(uiTaskHandle);
+            uiTaskHandle = nullptr;
+        }
+        if (hrTaskHandle != nullptr) {
+            vTaskDelete(hrTaskHandle);
+            hrTaskHandle = nullptr;
         }
 
-        // Measure HR once at session start
         uint8_t hr = measureHeartRate(MEASUREMENT_DURATION_MS);
-        float voltage = readBatteryVoltage();
-
-        if (hr > 0) {
+        if (hr > 0 && lockHistory(pdMS_TO_TICKS(500))) {
             hrHistory.addMeasurement(hr);
-            Serial.printf("Stored HR: %d BPM\n", hr);
-        } else {
-            Serial.println("No valid HR measurement");
+            unlockHistory();
         }
+        renderCurrentScreen(hr, latestBatteryVoltage);
+    } else {
+        const uint32_t sessionStartMs = millis();
+        const uint32_t baselineEndMs = sessionStartMs + ACTIVE_WINDOW_MS;
+
+        // Keep device active for baseline window + optional inactivity extension.
+        while (true) {
+            bool hrDone = false;
+            uint32_t lastTapMs = 0;
+            if (lockState(pdMS_TO_TICKS(20))) {
+                hrDone = measurementComplete;
+                lastTapMs = lastTapTimestampMs;
+                unlockState();
+            }
+
+            uint32_t now = millis();
+            bool baselineElapsed = (int32_t)(now - baselineEndMs) >= 0;
+
+            if (!baselineElapsed || !hrDone) {
+                vTaskDelay(pdMS_TO_TICKS(50));
+                continue;
+            }
+
+            if (lastTapMs == 0 || (now - lastTapMs) >= INACTIVITY_TIMEOUT_MS) {
+                Serial.println("Session complete - proceeding to deep sleep");
+                break;
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        if (lockState()) {
+            sessionStopRequested = true;
+            unlockState();
+        }
+
+        // Give tasks a chance to exit gracefully.
+        vTaskDelay(pdMS_TO_TICKS(200));
+
+        if (uiTaskHandle != nullptr) {
+            vTaskDelete(uiTaskHandle);
+            uiTaskHandle = nullptr;
+        }
+        if (hrTaskHandle != nullptr) {
+            vTaskDelete(hrTaskHandle);
+            hrTaskHandle = nullptr;
+        }
+    }
+
+    if (lockHistory()) {
         Serial.printf("History: %d / %d measurements\n",
             hrHistory.getCount(), HR_HISTORY_SIZE);
-
-        // Lambda: render whichever screen is currently active
-        auto renderCurrentScreen = [&]() {
-            if (currentScreen == SCREEN_GRAPH) {
-                uint8_t buffer[HR_HISTORY_SIZE];
-                uint8_t count = hrHistory.getMeasurements(buffer, HR_HISTORY_SIZE);
-                renderGraph(buffer, count);
-            } else if (currentScreen == SCREEN_SLEEP_SUMMARY) {
-                renderSleepSummary();
-            } else {
-                renderDashboard(hr, voltage, !hrHistory.hasFullHistory());
-            }
-        };
-
-        // Initial render
-        renderCurrentScreen();
-
-        // Interaction loop: block until 1 minute of no confirmed tap
-        uint32_t lastInteraction = millis();
-        while (millis() - lastInteraction < INACTIVITY_TIMEOUT_MS) {
-            if (checkTapInterrupt()) {
-                Serial.println("Double-tap confirmed: advancing screen");
-                toggleScreen();
-                renderCurrentScreen();
-                lastInteraction = millis();
-            }
-            delay(50);
-        }
-
-        Serial.println("Inactivity timeout reached - proceeding to deep sleep");
-
-    } else if (wakeReason == WAKE_TIMER) {
-        // -------------------------------------------------------
-        // Scheduled measurement cycle (timer wake only)
-        // -------------------------------------------------------
-        Serial.println("\n>>> Measurement cycle <<<");
-
-        // Measure heart rate
-        uint8_t hr = measureHeartRate(MEASUREMENT_DURATION_MS);
-
-        // Read battery voltage
-        float voltage = readBatteryVoltage();
-
-        // Store measurement if valid
-        if (hr > 0) {
-            hrHistory.addMeasurement(hr);
-            Serial.printf("Stored HR: %d BPM\n", hr);
-        } else {
-            Serial.println("No valid HR measurement - skipping storage");
-        }
-
-        // Render dashboard (always shown after a timer measurement)
-        bool buildingHistory = !hrHistory.hasFullHistory();
-        renderDashboard(hr, voltage, buildingHistory);
-
-        Serial.printf("History: %d / %d measurements\n",
-            hrHistory.getCount(), HR_HISTORY_SIZE);
+        unlockHistory();
     }
     
     // Prepare for deep sleep
     Serial.println("\n=== Entering Deep Sleep ===");
+
+    // Sleep state indicator: partial update only in the badge area.
+    updatePowerStatusBadge(false);
+
     shutdownSensors();
     hibernateDisplay();
     
     // Configure wake sources
     esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_US);
     
-    // ESP32-C3 uses GPIO wakeup (not ext0/ext1)
-    // Configure GPIO6 (D6) to wake on high level
-    gpio_wakeup_enable((gpio_num_t)IMU_INTERRUPT_PIN, GPIO_INTR_HIGH_LEVEL);
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << IMU_INTERRUPT_PIN, ESP_GPIO_WAKEUP_GPIO_HIGH);
-    
-    Serial.printf("Sleep for %d minutes or until tap interrupt\n", 
+    Serial.printf("Sleep for %d minutes (timer wake only)\n", 
         (int)(SLEEP_INTERVAL_US / 60000000ULL));
     Serial.println("===========================\n");
     Serial.flush();

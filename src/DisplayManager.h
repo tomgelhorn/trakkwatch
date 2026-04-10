@@ -17,6 +17,51 @@ GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> display(
     GxEPD2_154_D67(DISPLAY_CS_PIN, DISPLAY_DC_PIN, DISPLAY_RES_PIN, DISPLAY_BUSY_PIN)
 );
 
+// Small status badge in the bottom-right corner.
+#define STATUS_BADGE_W 32
+#define STATUS_BADGE_H 20
+
+void drawStatusBadge(int16_t x, int16_t y, bool isActive) {
+    // Outer badge
+    display.drawRoundRect(x, y, STATUS_BADGE_W, STATUS_BADGE_H, 3, GxEPD_BLACK);
+
+    // Face center
+    int16_t cx = x + 10;
+    int16_t cy = y + 10;
+    display.drawCircle(cx, cy, 6, GxEPD_BLACK);
+
+    if (isActive) {
+        // Happy face for active mode.
+        display.fillCircle(cx - 2, cy - 1, 1, GxEPD_BLACK);
+        display.fillCircle(cx + 2, cy - 1, 1, GxEPD_BLACK);
+        display.drawLine(cx - 2, cy + 2, cx + 2, cy + 2, GxEPD_BLACK);
+        display.setFont(0);
+        display.setCursor(x + 20, y + 12);
+        display.print("A");
+    } else {
+        // Sleepy face for deep-sleep mode.
+        display.drawLine(cx - 3, cy - 1, cx - 1, cy - 1, GxEPD_BLACK);
+        display.drawLine(cx + 1, cy - 1, cx + 3, cy - 1, GxEPD_BLACK);
+        display.drawLine(cx - 2, cy + 3, cx + 2, cy + 1, GxEPD_BLACK);
+        display.setFont(0);
+        display.setCursor(x + 18, y + 12);
+        display.print("Zz");
+    }
+}
+
+void updatePowerStatusBadge(bool isActive) {
+    int16_t x = display.width() - STATUS_BADGE_W;
+    int16_t y = display.height() - STATUS_BADGE_H;
+
+    // Only refresh the tiny badge region to save power.
+    display.setPartialWindow(x, y, STATUS_BADGE_W, STATUS_BADGE_H);
+    display.firstPage();
+    do {
+        display.fillRect(x, y, STATUS_BADGE_W, STATUS_BADGE_H, GxEPD_WHITE);
+        drawStatusBadge(x, y, isActive);
+    } while (display.nextPage());
+}
+
 // Initialize display
 bool initDisplay() {
     Serial.println("Initializing e-paper display...");
@@ -109,6 +154,10 @@ void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
             display.setCursor(x, 125);
             display.print("No reading");
         }       
+
+        // Active indicator badge (emoji-like) in bottom-right corner.
+        drawStatusBadge(display.width() - STATUS_BADGE_W,
+            display.height() - STATUS_BADGE_H, true);
     } while (display.nextPage());
     
     Serial.println("Dashboard rendered");

@@ -1,6 +1,6 @@
 # TrakkWatch - ESP32-C3 Smartwatch Firmware
 
-A battery-efficient smartwatch implementation for the Xiao ESP32C3 featuring heart rate monitoring, battery voltage display, 4-hour historical data tracking, and gesture-based navigation.
+A battery-efficient smartwatch implementation for the Xiao ESP32C3 featuring heart rate monitoring, battery voltage display, 4-hour historical data tracking, and gesture-based navigation while awake.
 
 ## Features
 
@@ -10,7 +10,7 @@ A battery-efficient smartwatch implementation for the Xiao ESP32C3 featuring hea
 - **4-Hour History Graph**: Rolling buffer storing 48 HR measurements (5-minute intervals)
 - **Dual-Screen Interface**: Dashboard and graph views
 - **Gesture Navigation**: Double-tap to switch screens (BMA400 IMU)
-- **Deep Sleep Power Management**: Wakes every 5 minutes for measurements
+- **Deep Sleep Power Management**: Timer-only wake with 1-minute active + 4-minute sleep baseline
 
 ### Hardware Components
 - **MCU**: Seeed Xiao ESP32-C3 (160 MHz RISC-V, 400 KB RAM)
@@ -74,21 +74,14 @@ src/
 
 ### Wake Behavior
 
-#### Timer Wake (Every 5 Minutes)
+#### Timer Wake (Periodic Cycle)
 1. Wake from deep sleep
 2. Initialize sensors and display
-3. Measure heart rate for 10 seconds
-4. Read battery voltage (16-sample average)
-5. Store HR in circular buffer
-6. Render dashboard with latest data
-7. Return to deep sleep
-
-#### Tap Wake (User Interaction)
-1. Wake from GPIO interrupt (double-tap detected)
-2. Toggle screen: Dashboard ↔ Graph
-3. Render appropriate screen
-4. Auto-return to dashboard after 60 seconds on graph
-5. Return to deep sleep
+3. Start 1-minute active session
+4. Measure heart rate while allowing double-tap screen navigation
+5. Store HR in circular buffer when valid
+6. Return to deep sleep for 4 minutes
+7. If user is still navigating near session end, extend awake time and sleep 60 seconds after the last double tap
 
 ### Display Screens
 
@@ -158,11 +151,11 @@ pio run -t upload && pio device monitor -b 115200
 5. Repeat until 48 measurements collected (4 hours)
 
 ### Gesture Navigation Test
-1. Perform firm double-tap on device
-2. Verify screen switches to graph view
-3. Check graph displays accumulated data points
-4. Double-tap again to return to dashboard
-5. Verify auto-return after 60 seconds if left on graph
+1. Wait for timer wake (device must already be awake)
+2. Perform firm double-tap on device
+3. Verify screen switches in cycle (Dashboard -> Graph -> Sleep Summary)
+4. Confirm heart-rate measurement continues while switching screens
+5. Tap near end of the 1-minute session and verify sleep waits 60 seconds after the last tap
 
 ### Battery Monitoring Test
 1. Measure actual battery voltage with multimeter

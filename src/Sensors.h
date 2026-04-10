@@ -29,11 +29,11 @@ static bool beatDetected = false;
 MAX30105 particleSensor;
 BMA400 accelerometer;
 
-// Interrupt flag for IMU
-volatile bool tapInterruptFlag = false;
+// Interrupt event counter for IMU (incremented in ISR)
+volatile uint32_t tapInterruptCount = 0;
 
-void imuInterruptHandler() {
-    tapInterruptFlag = true;
+void IRAM_ATTR imuInterruptHandler() {
+    tapInterruptCount++;
 }
 
 // Initialize heart rate sensor
@@ -140,16 +140,13 @@ uint8_t measureHeartRate(uint32_t durationMs) {
                 }
             }
         }
-        Serial.printf("  IR=%ld, BPM=%.1f, Avg=%d %s\n", 
-            irValue, beatsPerMinute, beatAvg, 
-            irValue < IR_FINGER_THRESHOLD ? "(no finger)" : "");
-        // Print progress every second
-        // if (millis() - lastPrint >= 1000) {
-        //     Serial.printf("  IR=%ld, BPM=%.1f, Avg=%d %s\n", 
-        //         irValue, beatsPerMinute, beatAvg, 
-        //         irValue < IR_FINGER_THRESHOLD ? "(no finger)" : "");
-        //     lastPrint = millis();
-        // }
+        // Print progress every second to avoid flooding serial output.
+        if (millis() - lastPrint >= 1000) {
+            Serial.printf("  IR=%ld, BPM=%.1f, Avg=%d %s\n", 
+                irValue, beatsPerMinute, beatAvg, 
+                irValue < IR_FINGER_THRESHOLD ? "(no finger)" : "");
+            lastPrint = millis();
+        }
         
         delay(20);  // Sample at ~50 Hz
     }
@@ -182,24 +179,13 @@ float readBatteryVoltage() {
     return volts;
 }
 
-// Check if IMU tap interrupt occurred and clear it
-bool checkTapInterrupt() {
-    if (!tapInterruptFlag) {
-        return false;
-    }
-    
-    tapInterruptFlag = false;
-    
-    // Read and clear interrupt status
-    uint16_t intStatus = 0;
-    if (accelerometer.getInterruptStatus(&intStatus) == BMA400_OK) {
-        if (intStatus & BMA400_ASSERTED_D_TAP_INT) {
-            Serial.println("Double tap detected!");
-            return true;
-        }
-    }
-    
-    return false;
+// Atomically drain pending tap interrupt events accumulated by the ISR.
+uint32_t consumeTapInterrupts() {
+    noInterrupts();
+    uint32_t count = tapInterruptCount;
+    tapInterruptCount = 0;
+    interrupts();
+    return count;
 }
 
 // Shutdown sensors for low power deep sleep
@@ -207,8 +193,9 @@ void shutdownSensors() {
     // MAX30102 can be put in low power mode
     particleSensor.shutDown();
     
-    // BMA400 stays active for tap detection during sleep
-    // (it has very low power consumption in normal mode)
+    // Deep-sleep wake is timer-only, so IMU interrupt line is not used during sleep.
+    detachInterrupt(digitalPinToInterrupt(IMU_INTERRUPT_PIN));
+    accelerometer.enableInterrupt(BMA400_DOUBLE_TAP_INT_EN, false);
     
     Serial.println("Sensors prepared for deep sleep");
 }
