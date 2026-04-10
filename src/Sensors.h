@@ -8,7 +8,7 @@
 
 // Pin definitions
 #define BATTERY_PIN A0
-#define IMU_INTERRUPT_PIN D3
+#define IMU_INTERRUPT_PIN D6
 
 // Heart rate thresholds
 #define IR_FINGER_THRESHOLD 50000
