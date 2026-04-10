@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include "Arduino.h"
 #include "SparkFun_BMA400_Arduino_Library.h"
 
 // Create a new sensor object

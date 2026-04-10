@@ -28,7 +28,7 @@ bool initDisplay() {
     delay(100);
     
     display.init(115200, true, 50, false);
-    display.setRotation(1);  // Landscape orientation
+    display.setRotation(0);  // Landscape orientation
     
     Serial.println("Display initialized (200x200)");
     return true;
@@ -70,9 +70,6 @@ void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
         
         // Battery indicator (top right)
         drawBatteryIcon(160, 5, voltage);
-        display.setFont(&FreeMonoBold9pt7b);
-        display.setCursor(130, 20);
-        display.printf("%.2fV", voltage);
         
         // Heart rate - large centered display
         display.setFont(&FreeMonoBold18pt7b);
@@ -95,9 +92,10 @@ void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
             display.print("BPM");
             
             // Heart icon (simple)
-            display.fillCircle(70, 85, 5, GxEPD_BLACK);
-            display.fillCircle(80, 85, 5, GxEPD_BLACK);
-            display.fillTriangle(65, 87, 85, 87, 75, 100, GxEPD_BLACK);
+            int padding = 10;
+            display.fillCircle(70 - padding, 85, 5, GxEPD_BLACK);
+            display.fillCircle(80 - padding, 85, 5, GxEPD_BLACK);
+            display.fillTriangle(65 - padding, 87, 85 - padding, 87, 75 - padding, 100, GxEPD_BLACK);
         } else {
             // No reading available
             display.setFont(&FreeMonoBold12pt7b);
@@ -113,21 +111,21 @@ void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
             display.print("No reading");
         }
         
-        // Building history message
-        if (buildingHistory) {
-            display.setFont(&FreeMonoBold9pt7b);
-            display.getTextBounds("Building history...", 0, 0, &tbx, &tby, &tbw, &tbh);
-            uint16_t x = ((display.width() - tbw) / 2) - tbx;
-            display.setCursor(x, 160);
-            display.print("Building history...");
-        }
+        // // Building history message
+        // if (buildingHistory) {
+        //     display.setFont(&FreeMonoBold9pt7b);
+        //     display.getTextBounds("Building history...", 0, 0, &tbx, &tby, &tbw, &tbh);
+        //     uint16_t x = ((display.width() - tbw) / 2) - tbx;
+        //     display.setCursor(x, 160);
+        //     display.print("Building history...");
+        // }
         
-        // Instructions at bottom
-        display.setFont(&FreeMonoBold9pt7b);
-        display.getTextBounds("Tap: graph->sleep->dash", 0, 0, &tbx, &tby, &tbw, &tbh);
-        uint16_t x = ((display.width() - tbw) / 2) - tbx;
-        display.setCursor(x, 190);
-        display.print("Tap: graph->sleep->dash");
+        // // Instructions at bottom
+        // display.setFont(&FreeMonoBold9pt7b);
+        // display.getTextBounds("Tap: graph->sleep->dash", 0, 0, &tbx, &tby, &tbw, &tbh);
+        // uint16_t x = ((display.width() - tbw) / 2) - tbx;
+        // display.setCursor(x, 190);
+        // display.print("Tap: graph->sleep->dash");
         
     } while (display.nextPage());
     
@@ -223,15 +221,6 @@ void renderGraph(uint8_t* hrData, uint8_t count) {
             display.print("No data");
         }
         
-        // Instructions at bottom
-        display.setFont(&FreeMonoBold9pt7b);
-        int16_t tbx, tby;
-        uint16_t tbw, tbh;
-        display.getTextBounds("Double-tap: next", 0, 0, &tbx, &tby, &tbw, &tbh);
-        uint16_t x = ((display.width() - tbw) / 2) - tbx;
-        display.setCursor(x, 195);
-        display.print("Double-tap: next");
-        
     } while (display.nextPage());
     
     Serial.println("Graph rendered");
@@ -293,17 +282,6 @@ void renderSleepSummary() {
         display.print("Efficiency");
         display.setCursor(rightX, rowY);
         display.print("--%");
-
-        // Divider above footer
-        display.drawLine(5, 172, display.width() - 5, 172, GxEPD_BLACK);
-
-        // ---- Footer hint ----
-        display.setFont(&FreeMonoBold9pt7b);
-        display.getTextBounds("Double-tap: next", 0, 0, &tbx, &tby, &tbw, &tbh);
-        cx = ((display.width() - tbw) / 2) - tbx;
-        display.setCursor(cx, 192);
-        display.print("Double-tap: next");
-
     } while (display.nextPage());
 
     Serial.println("Sleep summary rendered");

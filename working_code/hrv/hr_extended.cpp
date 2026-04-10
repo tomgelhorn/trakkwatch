@@ -8,7 +8,6 @@
 
 #include <Wire.h>
 #include "MAX30105.h"
-#include "DataProcessing.h"
 
 MAX30105 Sensor;
 
@@ -16,12 +15,12 @@ MAX30105 Sensor;
 const int SAMPLE_RATE = 400;           // Hz (must match sensor config)
 const int COLLECTION_TIME = 10;        // seconds
 const int BUFFER_SIZE = SAMPLE_RATE * COLLECTION_TIME;  // 4000 samples
-//const int MAX_PEAKS = 30;              // Max expected peaks in 10 seconds
+const int MAX_PEAKS = 30;              // Max expected peaks in 10 seconds
 
 // Data buffers
 float irBuffer[BUFFER_SIZE];
 float filteredBuffer[BUFFER_SIZE];
-PeakProperties peakProps;  // Structure to hold peak detection results
+int peakIndices[MAX_PEAKS];
 int rrIntervals[MAX_PEAKS - 1];
 
 // Biquad filter structure for bandpass (0.5-5 Hz)
@@ -61,25 +60,44 @@ void applyBandpassFilter(float* input, float* output, int length) {
   }
 }
 
-// Calculate adaptive prominence threshold based on signal std dev
-float calculateAdaptiveProminence(float* data, int length) {
-  float mean = 0, stdDev = 0;
+// Simple peak detection with minimum distance constraint
+int findPeaks(float* data, int length, int* peaks, int maxPeaks) {
+  int peakCount = 0;
+  const int MIN_DISTANCE = SAMPLE_RATE * 0.4;  // 0.4s minimum (max 150 BPM)
   
-  // Calculate mean
+  // Calculate adaptive threshold (mean + 0.3 * std)
+  float mean = 0, stdDev = 0;
   for (int i = 0; i < length; i++) {
     mean += data[i];
   }
   mean /= length;
   
-  // Calculate standard deviation
   for (int i = 0; i < length; i++) {
     float diff = data[i] - mean;
     stdDev += diff * diff;
   }
   stdDev = sqrt(stdDev / length);
+  float threshold = stdDev * 0.3;
   
-  // Return 30% of std dev as prominence threshold
-  return stdDev * 0.3;
+  // Find peaks
+  int lastPeakIdx = -MIN_DISTANCE;
+  
+  for (int i = 1; i < length - 1; i++) {
+    // Check if it's a local maximum above threshold
+    if (data[i] > data[i-1] && data[i] > data[i+1] && data[i] > threshold) {
+      // Check minimum distance from last peak
+      if (i - lastPeakIdx >= MIN_DISTANCE) {
+        if (peakCount < maxPeaks) {
+          peaks[peakCount++] = i;
+          lastPeakIdx = i;
+        } else {
+          break;  // Buffer full
+        }
+      }
+    }
+  }
+  
+  return peakCount;
 }
 
 // Calculate R-R intervals from peak indices
@@ -201,20 +219,11 @@ void loop() {
   Serial.println("Applying bandpass filter (0.5-5 Hz)...");
   applyBandpassFilter(irBuffer, filteredBuffer, BUFFER_SIZE);
   
-  // Detect peaks using DataProcessing library
+  // Detect peaks
   Serial.println("Detecting peaks...");
-  
-  // Calculate parameters for peak detection
-  const int MIN_DISTANCE = SAMPLE_RATE * 0.4;  // 0.4s minimum (max 150 BPM)
-  float prominence = calculateAdaptiveProminence(filteredBuffer, BUFFER_SIZE);
-  
-  Serial.print("Using distance: "); Serial.print(MIN_DISTANCE); Serial.println(" samples");
-  Serial.print("Using prominence: "); Serial.println(prominence, 2);
-  
-  int peakCount = find_peaks(filteredBuffer, BUFFER_SIZE, MIN_DISTANCE, prominence, &peakProps);
+  int peakCount = findPeaks(filteredBuffer, BUFFER_SIZE, peakIndices, MAX_PEAKS);
   Serial.print("Peaks found: "); Serial.println(peakCount);
-  Serial.print("Peaks found: "); Serial.println(peakProps.peakCount);
-
+  
   if (peakCount < 5) {
     Serial.println("ERROR: Too few peaks detected. Check finger placement.");
     delay(5000);
@@ -223,7 +232,7 @@ void loop() {
   
   // Calculate R-R intervals
   Serial.println("Calculating R-R intervals...");
-  int rrCount = calculateRRIntervals(peakProps.peaks, peakCount, rrIntervals);
+  int rrCount = calculateRRIntervals(peakIndices, peakCount, rrIntervals);
   
   // Calculate and display HRV metrics
   calculateHRVMetrics(rrIntervals, rrCount);

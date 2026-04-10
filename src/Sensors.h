@@ -26,7 +26,7 @@ static long lastIRValue = 0;
 static bool beatDetected = false;
 
 // Global sensor objects
-MAX30105 particleSensor;
+MAX30105 Sensor;
 BMA400 accelerometer;
 
 // Interrupt flag for IMU
@@ -40,15 +40,15 @@ void imuInterruptHandler() {
 bool initHeartRateSensor() {
     Serial.println("Initializing MAX30102...");
     
-    if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+    if (!Sensor.begin(Wire, I2C_SPEED_FAST)) {
         Serial.println("ERROR: MAX30102 not found!");
         return false;
     }
     
     // Configure with low power settings
-    particleSensor.setup();
-    particleSensor.setPulseAmplitudeRed(0x0A);  // Low power red LED
-    particleSensor.setPulseAmplitudeGreen(0);   // Green LED off
+    Sensor.setup();
+    Sensor.setPulseAmplitudeRed(0x0A);  // Low power red LED
+    Sensor.setPulseAmplitudeGreen(0);   // Green LED off
     
     Serial.println("MAX30102 initialized");
     return true;
@@ -114,7 +114,7 @@ uint8_t measureHeartRate(uint32_t durationMs) {
     bool fingerDetected = false;
     
     while (millis() - startTime < durationMs) {
-        long irValue = particleSensor.getIR();
+        long irValue = Sensor.getIR();
         
         // Check if finger is present
         if (irValue > IR_FINGER_THRESHOLD) {
@@ -172,7 +172,6 @@ float readBatteryVoltage() {
     
     for (int i = 0; i < samples; i++) {
         voltage += analogReadMilliVolts(BATTERY_PIN);
-        delay(10);
     }
     
     // Average and apply voltage divider correction (2x)
@@ -205,7 +204,7 @@ bool checkTapInterrupt() {
 // Shutdown sensors for low power deep sleep
 void shutdownSensors() {
     // MAX30102 can be put in low power mode
-    particleSensor.shutDown();
+    Sensor.shutDown();
     
     // BMA400 stays active for tap detection during sleep
     // (it has very low power consumption in normal mode)
