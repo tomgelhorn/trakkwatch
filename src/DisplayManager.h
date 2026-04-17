@@ -95,8 +95,39 @@ void drawBatteryIcon(int16_t x, int16_t y, float voltage) {
     }
 }
 
+// Dashboard state: true while the measurement task is running.
+bool dashboardMeasuringActive = false;
+
+void setDashboardMeasuringActive(bool isActive) {
+    dashboardMeasuringActive = isActive;
+}
+
+void updateDashboardLabelPartial() {
+    // Refresh only the HR label strip to minimize e-paper updates.
+    const int16_t labelAreaX = 20;
+    const int16_t labelAreaY = 110;
+    const int16_t labelAreaW = 160;
+    const int16_t labelAreaH = 30;
+
+    const char* hrLabel = dashboardMeasuringActive ? "Measuring" : "BPM";
+    int16_t tbx, tby;
+    uint16_t tbw, tbh;
+
+    display.setPartialWindow(labelAreaX, labelAreaY, labelAreaW, labelAreaH);
+    display.firstPage();
+    do {
+        display.fillRect(labelAreaX, labelAreaY, labelAreaW, labelAreaH, GxEPD_WHITE);
+        display.setTextColor(GxEPD_BLACK);
+        display.setFont(&FreeMonoBold12pt7b);
+        display.getTextBounds(hrLabel, 0, 0, &tbx, &tby, &tbw, &tbh);
+        uint16_t x = ((display.width() - tbw) / 2) - tbx;
+        display.setCursor(x, 130);
+        display.print(hrLabel);
+    } while (display.nextPage());
+}
+
 // Render dashboard screen with HR and battery
-void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
+void renderDashboard(uint8_t hr, float voltage) {
     Serial.println("Rendering DASHBOARD...");
     
     // Use partial refresh for dashboard (faster)
@@ -128,12 +159,13 @@ void renderDashboard(uint8_t hr, float voltage, bool buildingHistory) {
             display.setCursor(x, 100);
             display.print(hrText);
             
-            // BPM label
+            // Show status instead of a fixed unit while active measurement runs.
+            const char* hrLabel = dashboardMeasuringActive ? "Measuring" : "BPM";
             display.setFont(&FreeMonoBold12pt7b);
-            display.getTextBounds("BPM", 0, 0, &tbx, &tby, &tbw, &tbh);
+            display.getTextBounds(hrLabel, 0, 0, &tbx, &tby, &tbw, &tbh);
             x = ((display.width() - tbw) / 2) - tbx;
             display.setCursor(x, 130);
-            display.print("BPM");
+            display.print(hrLabel);
             
             // Heart icon (simple)
             int padding = 10;

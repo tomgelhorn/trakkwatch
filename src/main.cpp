@@ -39,7 +39,7 @@ SemaphoreHandle_t historyMutex = nullptr;
 bool sessionStopRequested = false;
 bool measurementComplete = false;
 bool renderRequested = false;
-uint8_t latestHeartRate = 0;
+RTC_DATA_ATTR uint8_t latestHeartRate = 0;
 float latestBatteryVoltage = 0.0f;
 uint32_t lastTapTimestampMs = 0;
 
@@ -65,7 +65,7 @@ static void unlockHistory() {
     xSemaphoreGive(historyMutex);
 }
 
-static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage) {
+static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMeasuringActive) {
     if (currentScreen == SCREEN_GRAPH) {
         uint8_t buffer[HR_HISTORY_SIZE] = {0};
         uint8_t count = 0;
@@ -77,12 +77,8 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage) {
     } else if (currentScreen == SCREEN_SLEEP_SUMMARY) {
         renderSleepSummary();
     } else {
-        bool buildingHistory = true;
-        if (lockHistory()) {
-            buildingHistory = !hrHistory.hasFullHistory();
-            unlockHistory();
-        }
-        renderDashboard(hrValue, batteryVoltage, buildingHistory);
+        setDashboardMeasuringActive(isMeasuringActive);
+        renderDashboard(hrValue, batteryVoltage);
     }
 }
 
@@ -131,14 +127,18 @@ static void uiTask(void* parameter) {
 
     uint8_t hrSnapshot = 0;
     float batterySnapshot = 0.0f;
+    bool measuringSnapshot = true;
+    bool previousMeasuringSnapshot = true;
 
     if (lockState()) {
         renderRequested = false;
         hrSnapshot = latestHeartRate;
         batterySnapshot = latestBatteryVoltage;
+        measuringSnapshot = !measurementComplete;
+        previousMeasuringSnapshot = measuringSnapshot;
         unlockState();
     }
-    renderCurrentScreen(hrSnapshot, batterySnapshot);
+    renderCurrentScreen(hrSnapshot, batterySnapshot, measuringSnapshot);
 
     while (true) {
         bool shouldStop = false;
@@ -150,6 +150,7 @@ static void uiTask(void* parameter) {
             renderRequested = false;
             hrSnapshot = latestHeartRate;
             batterySnapshot = latestBatteryVoltage;
+            measuringSnapshot = !measurementComplete;
             unlockState();
         }
 
@@ -176,8 +177,16 @@ static void uiTask(void* parameter) {
         }
 
         if (shouldRender) {
-            renderCurrentScreen(hrSnapshot, batterySnapshot);
+            bool measurementJustCompleted = previousMeasuringSnapshot && !measuringSnapshot;
+            if (measurementJustCompleted && currentScreen == SCREEN_DASHBOARD && hrSnapshot > 0) {
+                setDashboardMeasuringActive(false);
+                updateDashboardLabelPartial();
+            } else {
+                renderCurrentScreen(hrSnapshot, batterySnapshot, measuringSnapshot);
+            }
         }
+
+        previousMeasuringSnapshot = measuringSnapshot;
 
         vTaskDelay(pdMS_TO_TICKS(30));
     }
@@ -233,7 +242,6 @@ void setup() {
 
     // Session state initialization
     latestBatteryVoltage = readBatteryVoltage();
-    latestHeartRate = 0;
     measurementComplete = false;
     renderRequested = true;
     lastTapTimestampMs = 0;
@@ -265,7 +273,7 @@ void setup() {
             hrHistory.addMeasurement(hr);
             unlockHistory();
         }
-        renderCurrentScreen(hr, latestBatteryVoltage);
+        renderCurrentScreen(hr, latestBatteryVoltage, false);
     } else {
         const uint32_t sessionStartMs = millis();
         const uint32_t baselineEndMs = sessionStartMs + ACTIVE_WINDOW_MS;
@@ -322,7 +330,8 @@ void setup() {
     
     // Prepare for deep sleep
     Serial.println("\n=== Entering Deep Sleep ===");
-
+    setDashboardMeasuringActive(false);
+    renderDashboard(latestHeartRate, latestBatteryVoltage); // Final screen update before sleep
     // Sleep state indicator: partial update only in the badge area.
     updatePowerStatusBadge(false);
 
