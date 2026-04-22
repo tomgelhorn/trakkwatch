@@ -230,8 +230,8 @@ void renderDashboard(uint8_t hr, float voltage)
    Serial.println("Dashboard rendered");
 }
 
-// Render 4-hour heart rate graph
-void renderGraph(uint8_t *hrData, uint8_t count)
+// Render heart rate graph. title: screen label, xLabel: left x-axis caption (e.g. "4h ago").
+void renderGraph(uint8_t *hrData, uint16_t count, const char *title, const char *xLabel)
 {
    Serial.println("Rendering GRAPH...");
 
@@ -247,7 +247,7 @@ void renderGraph(uint8_t *hrData, uint8_t count)
       display.setFont(&FreeMonoBold9pt7b);
       display.setTextColor(GxEPD_BLACK);
       display.setCursor(10, 15);
-      display.print("4-Hour History");
+      display.print(title);
 
       // Graph area: left margin 30, right margin 10, top margin 25, bottom margin 30
       const int16_t graphLeft = 30;
@@ -278,7 +278,7 @@ void renderGraph(uint8_t *hrData, uint8_t count)
 
       // X-axis labels
       display.setCursor(graphLeft - 5, graphBottom + 10);
-      display.print("4h");
+      display.print(xLabel);
       display.setCursor(graphRight - 15, graphBottom + 10);
       display.print("Now");
 
@@ -287,7 +287,7 @@ void renderGraph(uint8_t *hrData, uint8_t count)
       {
          int16_t lastX = -1, lastY = -1;
 
-         for (uint8_t i = 0; i < count; i++)
+         for (uint16_t i = 0; i < count; i++)
          {
             uint8_t hr = hrData[i];
 
@@ -301,8 +301,8 @@ void renderGraph(uint8_t *hrData, uint8_t count)
             if (hr > maxBPM)
                hr = maxBPM;
 
-            // Calculate position
-            int16_t x = graphLeft + (i * graphWidth / (count - 1));
+            // Calculate position (guard against single-point divide-by-zero)
+            int16_t x = (count > 1) ? (int16_t)(graphLeft + ((int32_t)i * graphWidth / (count - 1))) : graphLeft;
             int16_t y = graphBottom - ((hr - minBPM) * graphHeight / bpmRange);
 
             // Draw point
@@ -333,6 +333,100 @@ void renderGraph(uint8_t *hrData, uint8_t count)
    } while (display.nextPage());
 
    Serial.println("Graph rendered");
+}
+
+// Render HRV (SDNN) graph. Y-axis: 0-200 ms. title: screen label, xLabel: left x-axis caption.
+void renderHRVGraph(uint8_t *hrvData, uint16_t count, const char *title, const char *xLabel)
+{
+   Serial.println("Rendering HRV GRAPH...");
+
+   display.setFullWindow();
+   display.firstPage();
+
+   do
+   {
+      display.fillScreen(GxEPD_WHITE);
+
+      // Title
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setTextColor(GxEPD_BLACK);
+      display.setCursor(10, 15);
+      display.print(title);
+
+      // Graph area (same margins as HR graph)
+      const int16_t graphLeft = 30;
+      const int16_t graphRight = 190;
+      const int16_t graphTop = 25;
+      const int16_t graphBottom = 170;
+      const int16_t graphWidth = graphRight - graphLeft;
+      const int16_t graphHeight = graphBottom - graphTop;
+
+      // Y-axis: 0-200 ms SDNN
+      const uint8_t maxSDNN = 200;
+
+      // Draw axes
+      display.drawLine(graphLeft, graphTop, graphLeft, graphBottom, GxEPD_BLACK);
+      display.drawLine(graphLeft, graphBottom, graphRight, graphBottom, GxEPD_BLACK);
+
+      // Gridlines every 50 ms
+      display.setFont(0);
+      for (uint8_t v = 50; v < 200; v += 50)
+      {
+         int16_t y = graphBottom - ((int32_t)v * graphHeight / maxSDNN);
+         display.drawLine(graphLeft - 2, y, graphRight, y, GxEPD_BLACK);
+         display.setCursor(2, y - 3);
+         display.print(v);
+      }
+
+      // Y-axis unit
+      display.setCursor(2, graphTop + 5);
+      display.print("ms");
+
+      // X-axis labels
+      display.setCursor(graphLeft - 5, graphBottom + 10);
+      display.print(xLabel);
+      display.setCursor(graphRight - 15, graphBottom + 10);
+      display.print("Now");
+
+      // Plot data points
+      if (count > 0)
+      {
+         int16_t lastX = -1, lastY = -1;
+
+         for (uint16_t i = 0; i < count; i++)
+         {
+            uint8_t v = hrvData[i];
+            if (v == 0)
+               continue; // skip no-data entries
+            if (v > maxSDNN)
+               v = maxSDNN;
+
+            int16_t x = (count > 1) ? (int16_t)(graphLeft + ((int32_t)i * graphWidth / (count - 1))) : graphLeft;
+            int16_t y = graphBottom - ((int32_t)v * graphHeight / maxSDNN);
+
+            display.fillCircle(x, y, 2, GxEPD_BLACK);
+            if (lastX >= 0 && lastY >= 0)
+            {
+               display.drawLine(lastX, lastY, x, y, GxEPD_BLACK);
+            }
+            lastX = x;
+            lastY = y;
+         }
+      }
+      else
+      {
+         display.setFont(&FreeMonoBold9pt7b);
+         int16_t tbx, tby;
+         uint16_t tbw, tbh;
+         display.getTextBounds("No data", 0, 0, &tbx, &tby, &tbw, &tbh);
+         uint16_t x = ((display.width() - tbw) / 2) - tbx;
+         display.setCursor(x, 100);
+         display.print("No data");
+      }
+
+   } while (display.nextPage());
+
+   Serial.println("HRV graph rendered");
 }
 
 // Render sleep summary screen with placeholder metrics

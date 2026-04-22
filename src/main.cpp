@@ -26,7 +26,7 @@
 #define ACTIVE_WINDOW_MS MEASUREMENT_DURATION_MS
 
 // Global data storage
-HRHistoryBuffer hrHistory;
+TieredHRStorage hrHistory;
 
 // Task handles
 TaskHandle_t hrTaskHandle = nullptr;
@@ -74,25 +74,79 @@ static void unlockHistory()
 
 static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMeasuringActive)
 {
-   if (currentScreen == SCREEN_GRAPH)
-   {
-      uint8_t buffer[HR_HISTORY_SIZE] = {0};
-      uint8_t count = 0;
-      if (lockHistory())
-      {
-         count = hrHistory.getMeasurements(buffer, HR_HISTORY_SIZE);
-         unlockHistory();
-      }
-      renderGraph(buffer, count);
-   }
-   else if (currentScreen == SCREEN_SLEEP_SUMMARY)
-   {
-      renderSleepSummary();
-   }
-   else
+   if (currentScreen == SCREEN_DASHBOARD)
    {
       setDashboardMeasuringActive(isMeasuringActive);
       renderDashboard(hrValue, batteryVoltage);
+      return;
+   }
+   if (currentScreen == SCREEN_SLEEP_SUMMARY)
+   {
+      renderSleepSummary();
+      return;
+   }
+
+   // All graph screens share one stack buffer (sized for the largest tier)
+   uint8_t histBuf[TieredHRStorage::T3_SIZE];
+   memset(histBuf, 0, sizeof(histBuf));
+   uint16_t n = 0;
+
+   if (lockHistory())
+   {
+      switch (currentScreen)
+      {
+      case SCREEN_HR_1H:
+         n = hrHistory.getLastN(1, false, histBuf, 12);
+         break;
+      case SCREEN_HR_4H:
+         n = hrHistory.getLastN(1, false, histBuf, 48);
+         break;
+      case SCREEN_HR_24H:
+         n = hrHistory.getAll(1, false, histBuf);
+         break;
+      case SCREEN_HR_7D:
+         n = hrHistory.getAll(2, false, histBuf);
+         break;
+      case SCREEN_HR_1MO:
+         n = hrHistory.getAll(3, false, histBuf);
+         break;
+      case SCREEN_HRV_24H:
+         n = hrHistory.getAll(1, true, histBuf);
+         break;
+      case SCREEN_HRV_7D:
+         n = hrHistory.getAll(2, true, histBuf);
+         break;
+      default:
+         break;
+      }
+      unlockHistory();
+   }
+
+   switch (currentScreen)
+   {
+   case SCREEN_HR_1H:
+      renderGraph(histBuf, n, "1-Hour HR", "1h ago");
+      break;
+   case SCREEN_HR_4H:
+      renderGraph(histBuf, n, "4-Hour HR", "4h ago");
+      break;
+   case SCREEN_HR_24H:
+      renderGraph(histBuf, n, "24-Hour HR", "24h ago");
+      break;
+   case SCREEN_HR_7D:
+      renderGraph(histBuf, n, "7-Day HR", "7d ago");
+      break;
+   case SCREEN_HR_1MO:
+      renderGraph(histBuf, n, "30-Day HR", "30d ago");
+      break;
+   case SCREEN_HRV_24H:
+      renderHRVGraph(histBuf, n, "24h HRV", "24h ago");
+      break;
+   case SCREEN_HRV_7D:
+      renderHRVGraph(histBuf, n, "7-Day HRV", "7d ago");
+      break;
+   default:
+      break;
    }
 }
 
@@ -106,7 +160,8 @@ static void heartRateTask(void *parameter)
    {
       if (lockHistory(pdMS_TO_TICKS(500)))
       {
-         hrHistory.addMeasurement(result.bpm);
+         uint8_t clampedHRV = (result.sdnn_ms > 255) ? 255 : (uint8_t)result.sdnn_ms;
+         hrHistory.addMeasurement(result.bpm, clampedHRV);
          unlockHistory();
          Serial.printf("Stored HR: %d BPM, SDNN: %d ms\n", result.bpm, result.sdnn_ms);
       }
@@ -322,7 +377,8 @@ void setup()
       HRVResult result = measureHeartRate(MEASUREMENT_DURATION_MS);
       if (result.valid && result.bpm > 0 && lockHistory(pdMS_TO_TICKS(500)))
       {
-         hrHistory.addMeasurement(result.bpm);
+         uint8_t clampedHRV = (result.sdnn_ms > 255) ? 255 : (uint8_t)result.sdnn_ms;
+         hrHistory.addMeasurement(result.bpm, clampedHRV);
          unlockHistory();
       }
       latestHeartRate = result.bpm;
@@ -388,8 +444,7 @@ void setup()
 
    if (lockHistory())
    {
-      Serial.printf("History: %d / %d measurements\n",
-                    hrHistory.getCount(), HR_HISTORY_SIZE);
+      Serial.printf("History: T1=%d/288 entries\n", hrHistory.getCount());
       unlockHistory();
    }
 
