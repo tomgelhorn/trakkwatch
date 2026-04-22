@@ -23,9 +23,18 @@
 #define WAKE_TIMER 0
 #define WAKE_BOOT 1
 
+// Sleep state classification
+#define SLEEP_STATE_AWAKE 0
+#define SLEEP_STATE_ASLEEP 1
+
 // RTC memory survives deep sleep
 RTC_DATA_ATTR uint8_t currentScreen = SCREEN_DASHBOARD;
 RTC_DATA_ATTR uint32_t bootCount = 0;
+
+// Sleep tracking — persistent across deep sleep cycles
+RTC_DATA_ATTR uint8_t currentSleepState = SLEEP_STATE_AWAKE;
+RTC_DATA_ATTR uint32_t consecutiveSleepCycles = 0; // back-to-back asleep measurements
+RTC_DATA_ATTR uint32_t sleepStartBootCount = 0;    // bootCount when sleep session began
 
 // Global state for current wake cycle
 uint8_t wakeReason = WAKE_BOOT;

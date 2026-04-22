@@ -30,9 +30,10 @@ private:
    // T1 (5-min, 24 h)
    uint8_t t1HR[T1_SIZE];
    uint8_t t1HRV[T1_SIZE];
-   uint16_t t1Idx;       // next write position
-   uint16_t t1Count;     // valid entries (max T1_SIZE)
-   uint8_t t1PromoCount; // T1 entries since last T2 promotion (0-5)
+   uint8_t t1Sleep[T1_SIZE]; // 0=awake, 1=asleep, parallel to t1HR
+   uint16_t t1Idx;           // next write position
+   uint16_t t1Count;         // valid entries (max T1_SIZE)
+   uint8_t t1PromoCount;     // T1 entries since last T2 promotion (0-5)
 
    // T2 (30-min, 7 d)
    uint8_t t2HR[T2_SIZE];
@@ -71,6 +72,7 @@ public:
       // Load T1
       bool t1OK = (prefs.getBytes("hr5m", t1HR, T1_SIZE) == T1_SIZE &&
                    prefs.getBytes("hrv5m", t1HRV, T1_SIZE) == T1_SIZE);
+      prefs.getBytes("slp5m", t1Sleep, T1_SIZE); // tolerate absence (first boot)
       t1Idx = prefs.getUShort("t1idx", 0);
       t1Count = prefs.getUShort("t1cnt", 0);
       t1PromoCount = prefs.getUChar("t1prom", 0);
@@ -93,6 +95,7 @@ public:
          Serial.println("Initializing T1 (5-min) buffer");
          memset(t1HR, 0, T1_SIZE);
          memset(t1HRV, 0, T1_SIZE);
+         memset(t1Sleep, 0, T1_SIZE);
          t1Idx = 0;
          t1Count = 0;
          t1PromoCount = 0;
@@ -122,6 +125,7 @@ public:
 
    // Store a 5-min measurement. hr: BPM (0=no reading), hrv: SDNN ms clamped to uint8_t.
    // Automatically promotes averaged values to T2 (every 6 calls) and T3 (every 4 T2 entries).
+   // Call addSleepState() immediately after addMeasurement() to keep indices aligned.
    void addMeasurement(uint8_t hr, uint8_t hrv)
    {
       if (!initialized)
@@ -130,10 +134,14 @@ public:
       // --- T1 write ---
       t1HR[t1Idx] = hr;
       t1HRV[t1Idx] = hrv;
+      // t1Sleep will be updated by addSleepState() BEFORE t1Idx advances,
+      // so we leave it unchanged here; addSleepState() writes to current t1Idx.
+      uint16_t writtenIdx = t1Idx; // capture before advance
       t1Idx = (t1Idx + 1) % T1_SIZE;
       if (t1Count < T1_SIZE)
          t1Count++;
       t1PromoCount++;
+      (void)writtenIdx; // used logically; sleep state written separately
 
       // --- Promote to T2 every 6 T1 entries (= 30-min interval) ---
       if (t1PromoCount >= 6)
@@ -236,6 +244,31 @@ public:
       return getLastN(tier, isHRV, buf, maxN);
    }
 
+   // Write sleep state (SLEEP_STATE_AWAKE/ASLEEP) for the measurement just stored.
+   // Must be called AFTER addMeasurement() to fill the same slot.
+   void addSleepState(uint8_t state)
+   {
+      if (!initialized)
+         return;
+      // t1Idx already advanced by addMeasurement(); the slot we just wrote is (t1Idx-1)
+      uint16_t lastIdx = (t1Idx == 0) ? (T1_SIZE - 1) : (t1Idx - 1);
+      t1Sleep[lastIdx] = state;
+      prefs.putBytes("slp5m", t1Sleep, T1_SIZE);
+   }
+
+   // Return the last 'n' T1 sleep-state entries in chronological order.
+   uint16_t getLastNSleep(uint8_t *buf, uint16_t n)
+   {
+      if (!initialized || buf == nullptr)
+         return 0;
+      uint16_t actual = (n < t1Count) ? n : t1Count;
+      for (uint16_t i = 0; i < actual; i++)
+      {
+         buf[i] = t1Sleep[(t1Idx - actual + i + T1_SIZE) % T1_SIZE];
+      }
+      return actual;
+   }
+
    // T1 fill count — used for status/debug output.
    uint16_t getCount() const { return t1Count; }
 
@@ -243,6 +276,7 @@ public:
    {
       memset(t1HR, 0, T1_SIZE);
       memset(t1HRV, 0, T1_SIZE);
+      memset(t1Sleep, 0, T1_SIZE);
       memset(t2HR, 0, T2_SIZE);
       memset(t2HRV, 0, T2_SIZE);
       memset(t3HR, 0, T3_SIZE);
@@ -265,6 +299,7 @@ private:
          return;
       prefs.putBytes("hr5m", t1HR, T1_SIZE);
       prefs.putBytes("hrv5m", t1HRV, T1_SIZE);
+      prefs.putBytes("slp5m", t1Sleep, T1_SIZE);
       prefs.putUShort("t1idx", t1Idx);
       prefs.putUShort("t1cnt", t1Count);
       prefs.putUChar("t1prom", t1PromoCount);

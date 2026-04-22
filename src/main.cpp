@@ -82,7 +82,7 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMe
    }
    if (currentScreen == SCREEN_SLEEP_SUMMARY)
    {
-      renderSleepSummary();
+      renderSleepSummary(currentSleepState, consecutiveSleepCycles, hrValue, latestSDNN);
       return;
    }
 
@@ -173,6 +173,34 @@ static void heartRateTask(void *parameter)
    else
    {
       Serial.println("No valid HR measurement");
+   }
+
+   // --- Sleep detection ---
+   bool noMotion = consumeNoMotion();
+   bool asleep = isSleepDetected(result, noMotion);
+   uint8_t newSleepState = asleep ? SLEEP_STATE_ASLEEP : SLEEP_STATE_AWAKE;
+
+   // Update RTC sleep session tracking (persists across deep sleep)
+   if (newSleepState == SLEEP_STATE_ASLEEP)
+   {
+      if (currentSleepState == SLEEP_STATE_AWAKE)
+         sleepStartBootCount = bootCount;
+      consecutiveSleepCycles++;
+   }
+   else
+   {
+      consecutiveSleepCycles = 0;
+   }
+   currentSleepState = newSleepState;
+   Serial.printf("Sleep state: %s (cycles=%lu)\n",
+                 newSleepState == SLEEP_STATE_ASLEEP ? "ASLEEP" : "AWAKE",
+                 consecutiveSleepCycles);
+
+   // Persist sleep state aligned with the HR measurement just stored
+   if (lockHistory(pdMS_TO_TICKS(500)))
+   {
+      hrHistory.addSleepState(newSleepState);
+      unlockHistory();
    }
 
    setDashboardSDNN(result.sdnn_ms);
@@ -316,6 +344,11 @@ void setup()
       Serial.println("ERROR: Failed to initialize IMU!");
    }
 
+   if (!initMotionInterrupt())
+   {
+      Serial.println("WARNING: Failed to configure no-motion interrupt (sleep detection degraded)");
+   }
+
    if (!initHeartRateSensor())
    {
       Serial.println("ERROR: Failed to initialize heart rate sensor!");
@@ -379,6 +412,22 @@ void setup()
       {
          uint8_t clampedHRV = (result.sdnn_ms > 255) ? 255 : (uint8_t)result.sdnn_ms;
          hrHistory.addMeasurement(result.bpm, clampedHRV);
+         // Sleep detection for sync path
+         bool noMotion = consumeNoMotion();
+         bool asleep = isSleepDetected(result, noMotion);
+         uint8_t newSleepState = asleep ? SLEEP_STATE_ASLEEP : SLEEP_STATE_AWAKE;
+         if (newSleepState == SLEEP_STATE_ASLEEP)
+         {
+            if (currentSleepState == SLEEP_STATE_AWAKE)
+               sleepStartBootCount = bootCount;
+            consecutiveSleepCycles++;
+         }
+         else
+         {
+            consecutiveSleepCycles = 0;
+         }
+         currentSleepState = newSleepState;
+         hrHistory.addSleepState(newSleepState);
          unlockHistory();
       }
       latestHeartRate = result.bpm;

@@ -429,12 +429,14 @@ void renderHRVGraph(uint8_t *hrvData, uint16_t count, const char *title, const c
    Serial.println("HRV graph rendered");
 }
 
-// Render sleep summary screen with placeholder metrics
-void renderSleepSummary()
+// Render sleep summary screen with real auto-detected metrics.
+// Parameters are passed in to avoid circular dependency with main.cpp globals.
+void renderSleepSummary(uint8_t sleepState, uint32_t sleepCycles,
+                        uint8_t hr, uint16_t sdnnMs)
 {
    Serial.println("Rendering SLEEP SUMMARY...");
 
-   display.setPartialWindow(0, 0, display.width(), display.height());
+   display.setFullWindow();
    display.firstPage();
 
    do
@@ -446,47 +448,90 @@ void renderSleepSummary()
       display.setFont(&FreeMonoBold12pt7b);
       int16_t tbx, tby;
       uint16_t tbw, tbh;
-      display.getTextBounds("Sleep Summary", 0, 0, &tbx, &tby, &tbw, &tbh);
+      display.getTextBounds("Sleep Tracker", 0, 0, &tbx, &tby, &tbw, &tbh);
       uint16_t cx = ((display.width() - tbw) / 2) - tbx;
       display.setCursor(cx, 22);
-      display.print("Sleep Summary");
+      display.print("Sleep Tracker");
 
-      // Divider line below title
+      // Divider
       display.drawLine(5, 30, display.width() - 5, 30, GxEPD_BLACK);
 
-      // ---- Metrics (two-column: label left, value right) ----
       display.setFont(&FreeMonoBold9pt7b);
       const int16_t leftX = 8;
-      const int16_t rightX = 110;
-      const int16_t rowH = 30; // row spacing
-      int16_t rowY = 56;       // first row baseline
+      const int16_t rightX = 115;
+      int16_t rowY = 54;
 
-      // Row 1: Total sleep
+      // ---- Row 1: Status ----
       display.setCursor(leftX, rowY);
-      display.print("Total Sleep");
+      display.print("Status:");
       display.setCursor(rightX, rowY);
-      display.print("--h --m");
-      rowY += rowH;
+      display.print(sleepState == 1 ? "Sleeping" : "Awake");
+      rowY += 28;
 
-      // Row 2: Deep sleep
+      // ---- Row 2: Duration ----
       display.setCursor(leftX, rowY);
-      display.print("Deep Sleep");
+      display.print("Duration:");
       display.setCursor(rightX, rowY);
-      display.print("--h --m");
-      rowY += rowH;
+      if (sleepState == 1 && sleepCycles > 0)
+      {
+         uint32_t totalMin = sleepCycles * 5UL; // 5 min per measurement cycle
+         uint32_t hours = totalMin / 60;
+         uint32_t mins = totalMin % 60;
+         char durBuf[12];
+         if (hours > 0)
+            snprintf(durBuf, sizeof(durBuf), "%luh %02lum", hours, mins);
+         else
+            snprintf(durBuf, sizeof(durBuf), "%lum", mins);
+         display.print(durBuf);
+      }
+      else
+      {
+         display.print("--");
+      }
+      rowY += 28;
 
-      // Row 3: Light sleep
+      // ---- Row 3: Heart Rate ----
       display.setCursor(leftX, rowY);
-      display.print("Light Sleep");
+      display.print("HR:");
       display.setCursor(rightX, rowY);
-      display.print("--h --m");
-      rowY += rowH;
+      if (hr > 0)
+      {
+         char hrBuf[10];
+         snprintf(hrBuf, sizeof(hrBuf), "%d bpm", hr);
+         display.print(hrBuf);
+      }
+      else
+      {
+         display.print("-- bpm");
+      }
+      rowY += 28;
 
-      // Row 4: Sleep efficiency
+      // ---- Row 4: HRV (SDNN) ----
       display.setCursor(leftX, rowY);
-      display.print("Efficiency");
+      display.print("HRV:");
       display.setCursor(rightX, rowY);
-      display.print("--%");
+      if (sdnnMs > 0)
+      {
+         char sdnnBuf[12];
+         snprintf(sdnnBuf, sizeof(sdnnBuf), "%d ms", sdnnMs);
+         display.print(sdnnBuf);
+      }
+      else
+      {
+         display.print("-- ms");
+      }
+      rowY += 28;
+
+      // ---- Row 5: Cycles ----
+      display.setCursor(leftX, rowY);
+      display.print("Cycles:");
+      display.setCursor(rightX, rowY);
+      {
+         char cycBuf[10];
+         snprintf(cycBuf, sizeof(cycBuf), "%lu", sleepCycles);
+         display.print(cycBuf);
+      }
+
    } while (display.nextPage());
 
    Serial.println("Sleep summary rendered");

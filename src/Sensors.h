@@ -9,7 +9,17 @@
 
 // Pin definitions
 #define BATTERY_PIN A0
-#define IMU_INTERRUPT_PIN D6
+#define IMU_INTERRUPT_PIN D6 // INT1 — double-tap
+#define IMU_INT2_PIN D7      // INT2 — no-motion / generic interrupt 2
+
+// Sleep-detection thresholds
+#define SLEEP_HR_THRESHOLD_BPM 65  // HR below this suggests sleep
+#define SLEEP_SDNN_THRESHOLD_MS 40 // SDNN above this confirms HRV pattern of sleep
+// BMA400 GEN2 no-motion config:
+//   1 LSB = 8 mg  → threshold = 3 → 24 mg stillness
+//   duration = 100 samples at FILT1 (100 Hz) → 1 second of no-motion
+#define NO_MOTION_THRESHOLD_MG 3
+#define NO_MOTION_DURATION 100
 
 // Heart rate thresholds
 #define IR_FINGER_THRESHOLD 50000
@@ -45,9 +55,17 @@ BMA400 accelerometer;
 // Interrupt event counter for IMU (incremented in ISR)
 volatile uint32_t tapInterruptCount = 0;
 
+// No-motion flag set by INT2 ISR
+volatile bool noMotionFlag = false;
+
 void IRAM_ATTR imuInterruptHandler()
 {
    tapInterruptCount++;
+}
+
+void IRAM_ATTR noMotionISRHandler()
+{
+   noMotionFlag = true;
 }
 
 // Initialize heart rate sensor
@@ -423,15 +441,81 @@ uint32_t consumeTapInterrupts()
    return count;
 }
 
+// Atomically read-and-clear the no-motion flag set by INT2 ISR.
+bool consumeNoMotion()
+{
+   noInterrupts();
+   bool val = noMotionFlag;
+   noMotionFlag = false;
+   interrupts();
+   return val;
+}
+
+// Configure BMA400 GEN2 interrupt for no-motion detection on INT2 (D7).
+// Call after initIMU().
+bool initMotionInterrupt()
+{
+   Serial.println("Configuring BMA400 INT2 (no-motion)...");
+
+   bma400_gen_int_conf gen2;
+   gen2.gen_int_thres = NO_MOTION_THRESHOLD_MG; // 1 LSB = 8 mg
+   gen2.gen_int_dur = NO_MOTION_DURATION;       // samples at FILT1
+   gen2.axes_sel = BMA400_AXIS_XYZ_EN;
+   gen2.data_src = BMA400_DATA_SRC_ACC_FILT1;
+   gen2.criterion_sel = BMA400_INACTIVITY_INT; // fire when BELOW threshold
+   gen2.evaluate_axes = BMA400_ALL_AXES_INT;   // all axes must be still
+   gen2.ref_update = BMA400_UPDATE_EVERY_TIME; // auto-update reference
+   gen2.hysteresis = BMA400_HYST_0_MG;
+   gen2.int_thres_ref_x = 0;
+   gen2.int_thres_ref_y = 0;
+   gen2.int_thres_ref_z = 0;
+   gen2.int_chan = BMA400_INT_CHANNEL_2;
+
+   if (accelerometer.setGeneric2Interrupt(&gen2) != BMA400_OK)
+   {
+      Serial.println("ERROR: Failed to configure GEN2 no-motion interrupt");
+      return false;
+   }
+
+   accelerometer.setInterruptPinMode(BMA400_INT_CHANNEL_2, BMA400_INT_PUSH_PULL_ACTIVE_1);
+   accelerometer.enableInterrupt(BMA400_GEN2_INT_EN, true);
+
+   pinMode(IMU_INT2_PIN, INPUT);
+   attachInterrupt(digitalPinToInterrupt(IMU_INT2_PIN), noMotionISRHandler, RISING);
+
+   Serial.println("BMA400 INT2 no-motion interrupt configured");
+   return true;
+}
+
+// Determine whether the current measurement indicates sleep.
+// Requires HR below threshold AND SDNN above threshold AND no significant motion.
+bool isSleepDetected(const HRVResult &result, bool noMotion)
+{
+   if (!result.valid)
+   {
+      Serial.println("SleepDetect: invalid HRV result -> awake");
+      return false;
+   }
+   bool lowHR = (result.bpm < SLEEP_HR_THRESHOLD_BPM);
+   bool highHRV = (result.sdnn_ms >= SLEEP_SDNN_THRESHOLD_MS);
+   Serial.printf("SleepDetect: HR=%d (<%d?%s), SDNN=%d (>=%d?%s), noMotion=%s\n",
+                 result.bpm, SLEEP_HR_THRESHOLD_BPM, lowHR ? "Y" : "N",
+                 result.sdnn_ms, SLEEP_SDNN_THRESHOLD_MS, highHRV ? "Y" : "N",
+                 noMotion ? "Y" : "N");
+   return lowHR && highHRV && noMotion;
+}
+
 // Shutdown sensors for low power deep sleep
 void shutdownSensors()
 {
    // MAX30102 can be put in low power mode
    particleSensor.shutDown();
 
-   // Deep-sleep wake is timer-only, so IMU interrupt line is not used during sleep.
+   // Deep-sleep wake is timer-only, so IMU interrupt lines are not used during sleep.
    detachInterrupt(digitalPinToInterrupt(IMU_INTERRUPT_PIN));
+   detachInterrupt(digitalPinToInterrupt(IMU_INT2_PIN));
    accelerometer.enableInterrupt(BMA400_DOUBLE_TAP_INT_EN, false);
+   accelerometer.enableInterrupt(BMA400_GEN2_INT_EN, false);
 
    Serial.println("Sensors prepared for deep sleep");
 }
