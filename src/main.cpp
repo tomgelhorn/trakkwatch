@@ -18,8 +18,11 @@
 #include "Sensors.h"
 #include "DisplayManager.h"
 
-// Sleep interval (4 minutes) + active window (1 minute) = 5-minute cycle
+// Sleep intervals:
+// Normal (wrist detected, measurement taken): 4 min  → 5-min total cycle
+// No-wrist (early abort): 9 min  → saves power when watch is not worn
 #define SLEEP_INTERVAL_US (4ULL * 60ULL * 1000000ULL)
+#define SLEEP_INTERVAL_NOWRIST_US (9ULL * 60ULL * 1000000ULL)
 
 // Active measurement/session baseline duration (1 minute)
 #define MEASUREMENT_DURATION_MS 60000UL
@@ -82,7 +85,11 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMe
    }
    if (currentScreen == SCREEN_SLEEP_SUMMARY)
    {
-      renderSleepSummary(currentSleepState, consecutiveSleepCycles, hrValue, latestSdrr);
+      // Show ongoing sleep duration if currently asleep, otherwise the last completed session.
+      uint32_t displayCycles = (currentSleepState == SLEEP_STATE_ASLEEP)
+                                   ? consecutiveSleepCycles
+                                   : lastSleepDurationCycles;
+      renderSleepSummary(currentSleepState, displayCycles, hrValue, latestSdrr);
       return;
    }
 
@@ -176,6 +183,8 @@ static void heartRateTask(void *parameter)
    }
 
    // --- Sleep detection ---
+   // consumeNoMotion() drains the motion event counter accumulated over
+   // the entire measurement window — returns true when no motion occurred.
    bool noMotion = consumeNoMotion();
    bool asleep = isSleepDetected(result, noMotion);
    uint8_t newSleepState = asleep ? SLEEP_STATE_ASLEEP : SLEEP_STATE_AWAKE;
@@ -189,12 +198,16 @@ static void heartRateTask(void *parameter)
    }
    else
    {
+      // Transitioning to awake: preserve the completed sleep session length
+      // so the display can still show the last sleep duration.
+      if (currentSleepState == SLEEP_STATE_ASLEEP && consecutiveSleepCycles > 0)
+         lastSleepDurationCycles = consecutiveSleepCycles;
       consecutiveSleepCycles = 0;
    }
    currentSleepState = newSleepState;
-   Serial.printf("Sleep state: %s (cycles=%lu)\n",
+   Serial.printf("Sleep state: %s (cycles=%lu, lastSleep=%lu)\n",
                  newSleepState == SLEEP_STATE_ASLEEP ? "ASLEEP" : "AWAKE",
-                 consecutiveSleepCycles);
+                 consecutiveSleepCycles, lastSleepDurationCycles);
 
    // Persist sleep state aligned with the HR measurement just stored
    if (lockHistory(pdMS_TO_TICKS(500)))
@@ -413,6 +426,8 @@ void setup()
          uint8_t clampedHRV = (result.sdrr_ms > 255) ? 255 : (uint8_t)result.sdrr_ms;
          hrHistory.addMeasurement(result.bpm, clampedHRV);
          // Sleep detection for sync path
+         // consumeNoMotion() drains the motion event counter accumulated
+         // over the measurement window — true means no motion detected.
          bool noMotion = consumeNoMotion();
          bool asleep = isSleepDetected(result, noMotion);
          uint8_t newSleepState = asleep ? SLEEP_STATE_ASLEEP : SLEEP_STATE_AWAKE;
@@ -424,6 +439,8 @@ void setup()
          }
          else
          {
+            if (currentSleepState == SLEEP_STATE_ASLEEP && consecutiveSleepCycles > 0)
+               lastSleepDurationCycles = consecutiveSleepCycles;
             consecutiveSleepCycles = 0;
          }
          currentSleepState = newSleepState;
@@ -508,11 +525,13 @@ void setup()
    shutdownSensors();
    hibernateDisplay();
 
-   // Configure wake sources
-   esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_US);
+   // Use extended sleep when no wrist was detected (watch not worn)
+   uint64_t sleepUs = (latestHeartRate == 0) ? SLEEP_INTERVAL_NOWRIST_US : SLEEP_INTERVAL_US;
+   esp_sleep_enable_timer_wakeup(sleepUs);
 
-   Serial.printf("Sleep for %d minutes (timer wake only)\n",
-                 (int)(SLEEP_INTERVAL_US / 60000000ULL));
+   Serial.printf("Sleep for %d minutes (timer wake only)%s\n",
+                 (int)(sleepUs / 60000000ULL),
+                 sleepUs == SLEEP_INTERVAL_NOWRIST_US ? " [no wrist - extended]" : "");
    Serial.println("===========================\n");
    Serial.flush();
 

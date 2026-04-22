@@ -16,13 +16,13 @@
 #define SLEEP_HR_THRESHOLD_BPM 65  // HR below this suggests sleep
 #define SLEEP_SDNN_THRESHOLD_MS 40 // SDNN above this confirms HRV pattern of sleep
 // BMA400 GEN2 no-motion config:
-//   1 LSB = 8 mg  → threshold = 3 → 24 mg stillness
+//   1 LSB = 8 mg  → threshold = 10 → 80 mg stillness
 //   duration = 100 samples at FILT1 (100 Hz) → 1 second of no-motion
-#define NO_MOTION_THRESHOLD_MG 3
+#define NO_MOTION_THRESHOLD_MG 10
 #define NO_MOTION_DURATION 100
 
 // Heart rate thresholds
-#define IR_FINGER_THRESHOLD 50000
+#define IR_WRIST_THRESHOLD 50000
 #define MIN_BPM 40
 #define MAX_BPM 180
 
@@ -37,7 +37,7 @@ struct HRVResult
 {
    uint8_t bpm;      // Mean heart rate (0 = no reading)
    uint16_t sdrr_ms; // SDRR in milliseconds (std dev of all RR intervals, no ectopic filtering)
-   bool valid;       // True when finger was detected and enough peaks found
+   bool valid;       // True when wrist was detected and enough peaks found
 };
 
 // Butterworth bandpass 0.5-5 Hz, order 4, fs=400 Hz  (SOS form, 4 sections × 6 coeffs)
@@ -55,8 +55,11 @@ BMA400 accelerometer;
 // Interrupt event counter for IMU (incremented in ISR)
 volatile uint32_t tapInterruptCount = 0;
 
-// No-motion flag set by INT2 ISR
-volatile bool noMotionFlag = false;
+// Motion event counter incremented by INT2 ISR each time the GEN2
+// interrupt fires (i.e. a stillness-to-motion or motion-to-stillness
+// transition was detected). A non-zero value over the measurement
+// window means the user moved.
+volatile uint32_t motionEventCount = 0;
 
 void IRAM_ATTR imuInterruptHandler()
 {
@@ -65,7 +68,7 @@ void IRAM_ATTR imuInterruptHandler()
 
 void IRAM_ATTR noMotionISRHandler()
 {
-   noMotionFlag = true;
+   motionEventCount++;
 }
 
 // Initialize heart rate sensor
@@ -262,17 +265,29 @@ HRVResult measureHeartRate(uint32_t durationMs)
    }
 
    // --- Phase 1: Collect raw IR data for exactly durationMs (time-based) ---
+   // Early stop: if no wrist is detected for 10 consecutive seconds, abort.
+   const uint32_t NO_WRIST_TIMEOUT_MS = 10000UL;
+
    uint32_t startTime = millis();
    uint32_t lastPrint = startTime;
-   bool fingerDetected = false;
+   uint32_t lastWristMs = startTime; // tracks when wrist was last detected
+   bool wristDetected = false;
    int collected = 0;
 
    while ((millis() - startTime) < durationMs && collected < bufCapacity)
    {
       long irValue = particleSensor.getIR();
 
-      if (irValue > IR_FINGER_THRESHOLD)
-         fingerDetected = true;
+      if (irValue > IR_WRIST_THRESHOLD)
+      {
+         wristDetected = true;
+         lastWristMs = millis();
+      }
+      else if ((millis() - lastWristMs) >= NO_WRIST_TIMEOUT_MS)
+      {
+         Serial.println("No wrist detected for 10 s — aborting measurement early.");
+         break;
+      }
 
       rawIR[collected++] = (int32_t)irValue;
 
@@ -280,7 +295,7 @@ HRVResult measureHeartRate(uint32_t durationMs)
       {
          Serial.printf("  [%ds] IR=%ld, samples=%d (cap:%d) %s\n",
                        (int)((millis() - startTime) / 1000), irValue, collected, bufCapacity,
-                       irValue < IR_FINGER_THRESHOLD ? "(no finger)" : "");
+                       irValue < IR_WRIST_THRESHOLD ? "(no wrist)" : "");
          lastPrint = millis();
       }
 
@@ -291,9 +306,9 @@ HRVResult measureHeartRate(uint32_t durationMs)
    uint32_t totalCollectionMs = millis() - startTime;
    float actualIntervalMs = (float)totalCollectionMs / collected;
 
-   if (!fingerDetected)
+   if (!wristDetected)
    {
-      Serial.println("No finger detected during measurement");
+      Serial.println("No wrist detected during measurement");
       free(rawIR);
       free(signal);
       return result;
@@ -441,14 +456,16 @@ uint32_t consumeTapInterrupts()
    return count;
 }
 
-// Atomically read-and-clear the no-motion flag set by INT2 ISR.
+// Atomically read-and-clear the motion event counter accumulated by the
+// INT2 ISR over the measurement window.
+// Returns true when NO motion was detected (counter == 0).
 bool consumeNoMotion()
 {
    noInterrupts();
-   bool val = noMotionFlag;
-   noMotionFlag = false;
+   uint32_t events = motionEventCount;
+   motionEventCount = 0;
    interrupts();
-   return val;
+   return (events == 0);
 }
 
 // Configure BMA400 GEN2 interrupt for no-motion detection on INT2 (D7).
@@ -488,21 +505,22 @@ bool initMotionInterrupt()
 }
 
 // Determine whether the current measurement indicates sleep.
-// Requires HR below threshold AND SDNN above threshold AND no significant motion.
+// Uses a 2-of-3 majority vote across: low HR, high HRV, no motion.
+// An invalid HRV result disables both HR and HRV criteria (only motion
+// could still cast a vote, but 1/3 is never enough to reach majority).
 bool isSleepDetected(const HRVResult &result, bool noMotion)
 {
-   if (!result.valid)
-   {
-      Serial.println("SleepDetect: invalid HRV result -> awake");
-      return false;
-   }
-   bool lowHR = (result.bpm < SLEEP_HR_THRESHOLD_BPM);
-   bool highHRV = (result.sdrr_ms >= SLEEP_SDNN_THRESHOLD_MS);
-   Serial.printf("SleepDetect: HR=%d (<%d?%s), SDRR=%d (>=%d?%s), noMotion=%s\n",
+   bool lowHR = result.valid && (result.bpm < SLEEP_HR_THRESHOLD_BPM);
+   bool highHRV = result.valid && (result.sdrr_ms >= SLEEP_SDNN_THRESHOLD_MS);
+
+   int votes = (lowHR ? 1 : 0) + (highHRV ? 1 : 0) + (noMotion ? 1 : 0);
+
+   Serial.printf("SleepDetect: HR=%d (<%d?%s) HRV=%d (>=%d?%s) noMotion=%s -> votes=%d/3\n",
                  result.bpm, SLEEP_HR_THRESHOLD_BPM, lowHR ? "Y" : "N",
                  result.sdrr_ms, SLEEP_SDNN_THRESHOLD_MS, highHRV ? "Y" : "N",
-                 noMotion ? "Y" : "N");
-   return lowHR && highHRV && noMotion;
+                 noMotion ? "Y" : "N", votes);
+
+   return (votes >= 2);
 }
 
 // Shutdown sensors for low power deep sleep
