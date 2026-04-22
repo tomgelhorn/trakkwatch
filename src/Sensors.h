@@ -36,7 +36,7 @@
 struct HRVResult
 {
    uint8_t bpm;      // Mean heart rate (0 = no reading)
-   uint16_t sdnn_ms; // SDNN in milliseconds (std dev of RR intervals)
+   uint16_t sdrr_ms; // SDRR in milliseconds (std dev of all RR intervals, no ectopic filtering)
    bool valid;       // True when finger was detected and enough peaks found
 };
 
@@ -382,7 +382,7 @@ HRVResult measureHeartRate(uint32_t durationMs)
    }
    float meanRR = rrSum / rrCount;
 
-   // Second pass: compute SDNN (std dev of RR intervals)
+   // Second pass: compute SDRR (std dev of all RR intervals)
    float rrVariance = 0;
    for (int i = 0; i < rrCount; i++)
    {
@@ -390,7 +390,7 @@ HRVResult measureHeartRate(uint32_t durationMs)
       float diff = rr - meanRR;
       rrVariance += diff * diff;
    }
-   float sdnn = sqrtf(rrVariance / rrCount);
+   float sdrr = sqrtf(rrVariance / rrCount);
 
    free(peakIndices);
 
@@ -402,11 +402,11 @@ HRVResult measureHeartRate(uint32_t durationMs)
    }
 
    result.bpm = bpm;
-   result.sdnn_ms = (uint16_t)sdnn;
+   result.sdrr_ms = (uint16_t)sdrr;
    result.valid = true;
 
-   Serial.printf("Heart rate: %d BPM, SDNN: %d ms (%d RR intervals)\n",
-                 result.bpm, result.sdnn_ms, rrCount);
+   Serial.printf("Heart rate: %d BPM, SDRR: %d ms (%d RR intervals)\n",
+                 result.bpm, result.sdrr_ms, rrCount);
    return result;
 }
 
@@ -497,10 +497,10 @@ bool isSleepDetected(const HRVResult &result, bool noMotion)
       return false;
    }
    bool lowHR = (result.bpm < SLEEP_HR_THRESHOLD_BPM);
-   bool highHRV = (result.sdnn_ms >= SLEEP_SDNN_THRESHOLD_MS);
-   Serial.printf("SleepDetect: HR=%d (<%d?%s), SDNN=%d (>=%d?%s), noMotion=%s\n",
+   bool highHRV = (result.sdrr_ms >= SLEEP_SDNN_THRESHOLD_MS);
+   Serial.printf("SleepDetect: HR=%d (<%d?%s), SDRR=%d (>=%d?%s), noMotion=%s\n",
                  result.bpm, SLEEP_HR_THRESHOLD_BPM, lowHR ? "Y" : "N",
-                 result.sdnn_ms, SLEEP_SDNN_THRESHOLD_MS, highHRV ? "Y" : "N",
+                 result.sdrr_ms, SLEEP_SDNN_THRESHOLD_MS, highHRV ? "Y" : "N",
                  noMotion ? "Y" : "N");
    return lowHR && highHRV && noMotion;
 }

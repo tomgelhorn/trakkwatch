@@ -109,9 +109,9 @@ void drawBatteryIcon(int16_t x, int16_t y, float voltage)
 bool dashboardMeasuringActive = false;
 
 // Latest SDNN (HRV) value to display on dashboard
-uint16_t dashboardLatestSDNN = 0;
+uint16_t dashboardLatestSdrr = 0;
 
-void setDashboardSDNN(uint16_t sdnn) { dashboardLatestSDNN = sdnn; }
+void setDashboardSDNN(uint16_t sdrr) { dashboardLatestSdrr = sdrr; }
 
 void setDashboardMeasuringActive(bool isActive)
 {
@@ -189,15 +189,15 @@ void renderDashboard(uint8_t hr, float voltage)
          display.print(hrLabel);
 
          // HRV (SDNN) line
-         if (!dashboardMeasuringActive && dashboardLatestSDNN > 0)
+         if (!dashboardMeasuringActive && dashboardLatestSdrr > 0)
          {
             display.setFont(&FreeMonoBold9pt7b);
-            char sdnnText[20];
-            sprintf(sdnnText, "HRV: %dms", dashboardLatestSDNN);
-            display.getTextBounds(sdnnText, 0, 0, &tbx, &tby, &tbw, &tbh);
+            char sdrrText[20];
+            sprintf(sdrrText, "HRV: %dms", dashboardLatestSdrr);
+            display.getTextBounds(sdrrText, 0, 0, &tbx, &tby, &tbw, &tbh);
             x = ((display.width() - tbw) / 2) - tbx;
             display.setCursor(x, 158);
-            display.print(sdnnText);
+            display.print(sdrrText);
          }
 
          // Heart icon (simple)

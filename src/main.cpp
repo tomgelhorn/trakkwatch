@@ -41,7 +41,7 @@ bool measurementComplete = false;
 bool renderRequested = false;
 RTC_DATA_ATTR uint8_t latestHeartRate = 0;
 float latestBatteryVoltage = 0.0f;
-uint16_t latestSDNN = 0;
+uint16_t latestSdrr = 0;
 uint32_t lastTapTimestampMs = 0;
 
 static bool lockState(TickType_t waitTicks = pdMS_TO_TICKS(50))
@@ -82,7 +82,7 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMe
    }
    if (currentScreen == SCREEN_SLEEP_SUMMARY)
    {
-      renderSleepSummary(currentSleepState, consecutiveSleepCycles, hrValue, latestSDNN);
+      renderSleepSummary(currentSleepState, consecutiveSleepCycles, hrValue, latestSdrr);
       return;
    }
 
@@ -160,10 +160,10 @@ static void heartRateTask(void *parameter)
    {
       if (lockHistory(pdMS_TO_TICKS(500)))
       {
-         uint8_t clampedHRV = (result.sdnn_ms > 255) ? 255 : (uint8_t)result.sdnn_ms;
+         uint8_t clampedHRV = (result.sdrr_ms > 255) ? 255 : (uint8_t)result.sdrr_ms;
          hrHistory.addMeasurement(result.bpm, clampedHRV);
          unlockHistory();
-         Serial.printf("Stored HR: %d BPM, SDNN: %d ms\n", result.bpm, result.sdnn_ms);
+         Serial.printf("Stored HR: %d BPM, SDRR: %d ms\n", result.bpm, result.sdrr_ms);
       }
       else
       {
@@ -203,12 +203,12 @@ static void heartRateTask(void *parameter)
       unlockHistory();
    }
 
-   setDashboardSDNN(result.sdnn_ms);
+   setDashboardSDNN(result.sdrr_ms);
 
    if (lockState())
    {
       latestHeartRate = result.bpm;
-      latestSDNN = result.sdnn_ms;
+      latestSdrr = result.sdrr_ms;
       measurementComplete = true;
       renderRequested = true;
       unlockState();
@@ -301,7 +301,7 @@ static void uiTask(void *parameter)
          if (measurementJustCompleted && currentScreen == SCREEN_DASHBOARD && hrSnapshot > 0)
          {
             setDashboardMeasuringActive(false);
-            setDashboardSDNN(latestSDNN);
+            setDashboardSDNN(latestSdrr);
             renderCurrentScreen(hrSnapshot, batterySnapshot, measuringSnapshot);
          }
          else
@@ -410,7 +410,7 @@ void setup()
       HRVResult result = measureHeartRate(MEASUREMENT_DURATION_MS);
       if (result.valid && result.bpm > 0 && lockHistory(pdMS_TO_TICKS(500)))
       {
-         uint8_t clampedHRV = (result.sdnn_ms > 255) ? 255 : (uint8_t)result.sdnn_ms;
+         uint8_t clampedHRV = (result.sdrr_ms > 255) ? 255 : (uint8_t)result.sdrr_ms;
          hrHistory.addMeasurement(result.bpm, clampedHRV);
          // Sleep detection for sync path
          bool noMotion = consumeNoMotion();
@@ -431,8 +431,8 @@ void setup()
          unlockHistory();
       }
       latestHeartRate = result.bpm;
-      latestSDNN = result.sdnn_ms;
-      setDashboardSDNN(result.sdnn_ms);
+      latestSdrr = result.sdrr_ms;
+      setDashboardSDNN(result.sdrr_ms);
       renderCurrentScreen(result.bpm, latestBatteryVoltage, false);
    }
    else
@@ -500,7 +500,7 @@ void setup()
    // Prepare for deep sleep
    Serial.println("\n=== Entering Deep Sleep ===");
    setDashboardMeasuringActive(false);
-   setDashboardSDNN(latestSDNN);
+   setDashboardSDNN(latestSdrr);
    renderDashboard(latestHeartRate, latestBatteryVoltage); // Final screen update before sleep
    // Sleep state indicator: partial update only in the badge area.
    updatePowerStatusBadge(false);
