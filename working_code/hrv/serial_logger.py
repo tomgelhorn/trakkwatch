@@ -167,5 +167,5 @@ if __name__ == "__main__":
     # Windows: 'COM3', 'COM4', etc.
     # Linux/Mac: '/dev/ttyUSB0', '/dev/ttyACM0', etc.
     
-    logger = HRVDataLogger(port='COM12', baudrate=115200)
+    logger = HRVDataLogger(port='COM15', baudrate=115200)
     logger.run()
