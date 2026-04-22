@@ -11,8 +11,8 @@
 #define SCREEN_HR_24H 3
 #define SCREEN_HR_7D 4
 #define SCREEN_HR_1MO 5
-#define SCREEN_HRV_24H 6
-#define SCREEN_HRV_7D 7
+#define SCREEN_HRV_7D 6
+#define SCREEN_HRV_1MO 7
 #define SCREEN_SLEEP_SUMMARY 8
 #define SCREEN_COUNT 9
 
@@ -72,7 +72,7 @@ void toggleScreen()
    currentScreen = (currentScreen + 1) % SCREEN_COUNT;
    const char *screenNames[] = {
        "DASHBOARD", "HR_1H", "HR_4H", "HR_24H",
-       "HR_7D", "HR_1MO", "HRV_24H", "HRV_7D", "SLEEP_SUMMARY"};
+       "HR_7D", "HR_1MO", "HRV_7D", "HRV_1MO", "SLEEP_SUMMARY"};
    Serial.printf("Switched to %s screen\n",
                  currentScreen < SCREEN_COUNT ? screenNames[currentScreen] : "UNKNOWN");
 }
@@ -84,7 +84,7 @@ void printSystemState()
    Serial.printf("Boot count: %d\n", bootCount);
    const char *screenNames[] = {
        "DASHBOARD", "HR_1H", "HR_4H", "HR_24H",
-       "HR_7D", "HR_1MO", "HRV_24H", "HRV_7D", "SLEEP_SUMMARY"};
+       "HR_7D", "HR_1MO", "HRV_7D", "HRV_1MO", "SLEEP_SUMMARY"};
    Serial.printf("Current screen: %s\n",
                  currentScreen < SCREEN_COUNT ? screenNames[currentScreen] : "UNKNOWN");
    Serial.printf("Wake reason: %s\n",

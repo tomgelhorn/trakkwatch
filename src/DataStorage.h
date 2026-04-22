@@ -8,7 +8,7 @@
  *
  * T1 (5-min resolution, 24 h):  288 samples for HR and HRV
  * T2 (30-min resolution, 7 d):  336 samples for HR and HRV
- * T3 (2-h resolution,  30 d):  360 samples for HR only
+ * T3 (2-h resolution,  30 d):  360 samples for HR and HRV
  *
  * Promotion: every 6 T1 entries the mean is pushed to T2;
  *            every 4 T2 entries the mean is pushed to T3.
@@ -21,7 +21,7 @@ class TieredHRStorage
 public:
    static constexpr uint16_t T1_SIZE = 288; // 5-min, 24 h
    static constexpr uint16_t T2_SIZE = 336; // 30-min, 7 d
-   static constexpr uint16_t T3_SIZE = 360; // 2-h, 30 d (HR only)
+   static constexpr uint16_t T3_SIZE = 360; // 2-h, 30 d (HR and HRV)
 
 private:
    Preferences prefs;
@@ -42,8 +42,9 @@ private:
    uint16_t t2Count;
    uint8_t t2PromoCount; // T2 entries since last T3 promotion (0-3)
 
-   // T3 (2-h, 30 d, HR only)
+   // T3 (2-h, 30 d, HR and HRV)
    uint8_t t3HR[T3_SIZE];
+   uint8_t t3HRV[T3_SIZE];
    uint16_t t3Idx;
    uint16_t t3Count;
 
@@ -59,6 +60,7 @@ public:
       memset(t2HR, 0, T2_SIZE);
       memset(t2HRV, 0, T2_SIZE);
       memset(t3HR, 0, T3_SIZE);
+      memset(t3HRV, 0, T3_SIZE);
    }
 
    bool begin()
@@ -85,7 +87,8 @@ public:
       t2PromoCount = prefs.getUChar("t2prom", 0);
 
       // Load T3
-      bool t3OK = (prefs.getBytes("hr2h", t3HR, T3_SIZE) == T3_SIZE);
+      bool t3OK = (prefs.getBytes("hr2h", t3HR, T3_SIZE) == T3_SIZE &&
+                   prefs.getBytes("hrv2h", t3HRV, T3_SIZE) == T3_SIZE);
       t3Idx = prefs.getUShort("t3idx", 0);
       t3Count = prefs.getUShort("t3cnt", 0);
 
@@ -113,6 +116,7 @@ public:
       {
          Serial.println("Initializing T3 (2-h) buffer");
          memset(t3HR, 0, T3_SIZE);
+         memset(t3HRV, 0, T3_SIZE);
          t3Idx = 0;
          t3Count = 0;
       }
@@ -170,7 +174,7 @@ public:
          if (t2PromoCount >= 4)
          {
             t2PromoCount = 0;
-            uint16_t sumHR3 = 0;
+            uint16_t sumHR3 = 0, sumHRV3 = 0;
             uint8_t n3 = 0;
             for (uint8_t i = 0; i < 4; i++)
             {
@@ -178,10 +182,12 @@ public:
                if (t2HR[pos] > 0)
                {
                   sumHR3 += t2HR[pos];
+                  sumHRV3 += t2HRV[pos];
                   n3++;
                }
             }
             t3HR[t3Idx] = (n3 > 0) ? (uint8_t)(sumHR3 / n3) : 0;
+            t3HRV[t3Idx] = (n3 > 0) ? (uint8_t)(sumHRV3 / n3) : 0;
             t3Idx = (t3Idx + 1) % T3_SIZE;
             if (t3Count < T3_SIZE)
                t3Count++;
@@ -218,7 +224,7 @@ public:
       }
       else if (tier == 3)
       {
-         src = t3HR;
+         src = isHRV ? t3HRV : t3HR;
          size = T3_SIZE;
          idx = t3Idx;
          count = t3Count;
@@ -280,6 +286,7 @@ public:
       memset(t2HR, 0, T2_SIZE);
       memset(t2HRV, 0, T2_SIZE);
       memset(t3HR, 0, T3_SIZE);
+      memset(t3HRV, 0, T3_SIZE);
       t1Idx = 0;
       t1Count = 0;
       t1PromoCount = 0;
@@ -309,6 +316,7 @@ private:
       prefs.putUShort("t2cnt", t2Count);
       prefs.putUChar("t2prom", t2PromoCount);
       prefs.putBytes("hr2h", t3HR, T3_SIZE);
+      prefs.putBytes("hrv2h", t3HRV, T3_SIZE);
       prefs.putUShort("t3idx", t3Idx);
       prefs.putUShort("t3cnt", t3Count);
    }

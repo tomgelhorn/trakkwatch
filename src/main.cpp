@@ -110,11 +110,11 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMe
       case SCREEN_HR_1MO:
          n = hrHistory.getAll(3, false, histBuf);
          break;
-      case SCREEN_HRV_24H:
-         n = hrHistory.getAll(1, true, histBuf);
-         break;
       case SCREEN_HRV_7D:
          n = hrHistory.getAll(2, true, histBuf);
+         break;
+      case SCREEN_HRV_1MO:
+         n = hrHistory.getAll(3, true, histBuf);
          break;
       default:
          break;
@@ -139,11 +139,11 @@ static void renderCurrentScreen(uint8_t hrValue, float batteryVoltage, bool isMe
    case SCREEN_HR_1MO:
       renderGraph(histBuf, n, "30-Day HR", "30d ago");
       break;
-   case SCREEN_HRV_24H:
-      renderHRVGraph(histBuf, n, "24h HRV", "24h ago");
-      break;
    case SCREEN_HRV_7D:
       renderHRVGraph(histBuf, n, "7-Day HRV", "7d ago");
+      break;
+   case SCREEN_HRV_1MO:
+      renderHRVGraph(histBuf, n, "30-Day HRV", "30d ago");
       break;
    default:
       break;
