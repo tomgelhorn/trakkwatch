@@ -71,7 +71,6 @@ void IRAM_ATTR noMotionISRHandler()
    motionEventCount++;
 }
 
-// Initialize heart rate sensor
 bool initHeartRateSensor()
 {
    Serial.println("Initializing MAX30102...");
@@ -82,7 +81,6 @@ bool initHeartRateSensor()
       return false;
    }
 
-   // Setup to sense a nice looking saw tooth on the plotter
    byte ledBrightness = 0x1F; // Options: 0=Off to 255=50mA
    byte sampleAverage = 1;    // Options: 1, 2, 4, 8, 16, 32
    byte ledMode = 2;          // Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
@@ -90,13 +88,12 @@ bool initHeartRateSensor()
    int pulseWidth = 411;      // Options: 69, 118, 215, 411
    int adcRange = 4096;       // Options: 2048, 4096, 8192, 16384
 
-   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); // Configure sensor with these settings
+   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
 
    Serial.println("MAX30102 initialized");
    return true;
 }
 
-// Initialize IMU with double-tap detection
 bool initIMU()
 {
    Serial.println("Initializing BMA400...");
@@ -425,7 +422,6 @@ HRVResult measureHeartRate(uint32_t durationMs)
    return result;
 }
 
-// Read battery voltage with averaging
 float readBatteryVoltage()
 {
    pinMode(BATTERY_PIN, INPUT);
@@ -504,10 +500,7 @@ bool initMotionInterrupt()
    return true;
 }
 
-// Determine whether the current measurement indicates sleep.
-// Uses a 2-of-3 majority vote across: low HR, high HRV, no motion.
-// An invalid HRV result disables both HR and HRV criteria (only motion
-// could still cast a vote, but 1/3 is never enough to reach majority).
+// 2-of-3 majority vote: low HR, high HRV, no motion.
 bool isSleepDetected(const HRVResult &result, bool noMotion)
 {
    bool lowHR = result.valid && (result.bpm < SLEEP_HR_THRESHOLD_BPM);
@@ -523,7 +516,6 @@ bool isSleepDetected(const HRVResult &result, bool noMotion)
    return (votes >= 2);
 }
 
-// Shutdown sensors for low power deep sleep
 void shutdownSensors()
 {
    // MAX30102 can be put in low power mode

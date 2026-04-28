@@ -6,7 +6,7 @@
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
 
-// Display pin definitions (from demo_epaper.cpp)
+// Display pin definitions
 #define DISPLAY_CS_PIN D9
 #define DISPLAY_DC_PIN D1
 #define DISPLAY_RES_PIN D2
@@ -67,7 +67,6 @@ void updatePowerStatusBadge(bool isActive)
    } while (display.nextPage());
 }
 
-// Initialize display
 bool initDisplay()
 {
    Serial.println("Initializing e-paper display...");
@@ -84,7 +83,6 @@ bool initDisplay()
    return true;
 }
 
-// Draw battery icon with charge level indicator
 void drawBatteryIcon(int16_t x, int16_t y, float voltage)
 {
    // Battery outline (20x10 pixels)
@@ -149,7 +147,6 @@ void renderDashboard(uint8_t hr, float voltage)
 {
    Serial.println("Rendering DASHBOARD...");
 
-   // Use partial refresh for dashboard (faster)
    display.setPartialWindow(0, 0, display.width(), display.height());
    display.firstPage();
 
@@ -235,7 +232,6 @@ void renderGraph(uint8_t *hrData, uint16_t count, const char *title, const char 
 {
    Serial.println("Rendering GRAPH...");
 
-   // Use full refresh for complex graph rendering
    display.setFullWindow();
    display.firstPage();
 

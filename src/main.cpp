@@ -335,7 +335,7 @@ static void uiTask(void *parameter)
 void setup()
 {
    Serial.begin(115200);
-   delay(500); // Give serial time to initialize
+   delay(500);
 
    Serial.println("\n\n=================================");
    Serial.println("TrakkWatch Starting...");
@@ -541,8 +541,6 @@ void setup()
 
 void loop()
 {
-   // Should never reach here due to deep sleep
-   // If we do, something went wrong
    Serial.println("ERROR: Should not be in loop()!");
    delay(1000);
 }
